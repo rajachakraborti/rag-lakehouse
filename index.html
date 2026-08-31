@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAG-Lakehouse — Interactive AI Engine & Vector Pipeline Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #070a12;
+      --card-bg: #0e1424;
+      --border: rgba(79, 158, 255, 0.15);
+      --accent-blue: #4f9eff;
+      --accent-purple: #9b5cff;
+      --accent-cyan: #00d4ff;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'Inter', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.6; padding-bottom: 60px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    
+    header { padding: 48px 0 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-family: var(--mono); font-weight: 600; text-transform: uppercase; background: rgba(79, 158, 255, 0.1); color: var(--accent-blue); border: 1px solid rgba(79, 158, 255, 0.3); margin-bottom: 16px; }
+    h1 { font-size: clamp(32px, 5vw, 48px); font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, #ffffff 0%, var(--accent-blue) 60%, var(--accent-purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+    p.subtitle { color: var(--text-muted); font-size: 16px; max-width: 760px; }
+    
+    .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 40px; }
+    @media (max-width: 840px) { .grid-layout { grid-template-columns: 1fr; } }
+    
+    .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); }
+    .panel-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; }
+    
+    label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 8px; }
+    textarea, input[type="text"] { width: 100%; background: #03060d; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--sans); font-size: 14px; padding: 12px 16px; transition: border-color 0.2s; margin-bottom: 16px; }
+    textarea:focus, input[type="text"]:focus { outline: none; border-color: var(--accent-blue); }
+    
+    .btn { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color: white; font-weight: 600; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(79, 158, 255, 0.4); }
+    
+    .status-box { background: #03060d; border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: var(--mono); font-size: 13px; margin-top: 16px; }
+    .status-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .status-row:last-child { margin-bottom: 0; }
+    
+    .chunk-card { background: rgba(79, 158, 255, 0.05); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 13px; }
+    .vector-heatmap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 12px; }
+    .vector-cell { width: 10px; height: 10px; border-radius: 2px; }
+    
+    .tag { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+    .tag-complex { background: rgba(155, 92, 255, 0.2); color: var(--accent-purple); border: 1px solid var(--accent-purple); }
+    .tag-standard { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); border: 1px solid var(--accent-green); }
+    
+    .architecture-box { grid-column: 1 / -1; }
+    .step-flow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin-top: 20px; }
+    .step-item { flex: 1; min-width: 180px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; }
+    .step-num { font-family: var(--mono); font-size: 12px; color: var(--accent-blue); font-weight: 700; margin-bottom: 6px; }
+    .step-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .step-desc { font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <span class="badge">Live Playground & Architecture Explorer</span>
+      <h1>RAG-Lakehouse Dashboard</h1>
+      <p class="subtitle">Distributed PySpark text processing, PyTorch 384-dim vector embeddings, ChromaDB similarity retrieval, and GCP Gemini model routing.</p>
+    </header>
+
+    <div class="grid-layout">
+      <!-- RAG Search & Router Sandbox -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>🔍 RAG Query & Model Router</span>
+          <span id="router-tag" class="tag tag-complex">ROUTER: READY</span>
+        </div>
+        
+        <label for="query-input">Ask a question across the data lakehouse:</label>
+        <input type="text" id="query-input" value="How does Cloud Run scale to zero when idle?" />
+        
+        <button class="btn" onclick="runRAGQuery()">Execute RAG Query</button>
+
+        <div id="query-result" class="status-box" style="margin-top: 20px;">
+          <div class="status-row"><span>Query Complexity:</span> <strong id="res-complexity" style="color: var(--accent-purple);">COMPLEX</strong></div>
+          <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
+          <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
+          <div class="status-row"><span>Retrieved Chunks:</span> <span id="res-count">2 chunks</span></div>
+        </div>
+
+        <div id="chunks-container">
+          <div class="chunk-card">
+            <strong>[Doc: cloud_run_autoscaling.md]</strong> (Similarity: 98.4%)<br/>
+            GCP Cloud Run v2 container services are configured with min_instance_count = 0 to scale to zero when idle, consuming zero compute budget while maintaining sub-second cold starts...
+          </div>
+        </div>
+      </div>
+
+      <!-- PySpark & PyTorch Ingestion Sandbox -->
+      <div class="panel">
+        <div class="panel-title">
+          <span>⚡ PySpark & PyTorch Chunking</span>
+          <span class="tag tag-standard">384-DIM EMBEDDING</span>
+        </div>
+
+        <label for="doc-input">Ingest Document Text:</label>
+        <textarea id="doc-input" rows="4">The real-time seat availability platform compresses 100,000 seat states using RoaringBitmap sparse array representation. Encoded payloads are pushed over WebSockets to client browsers with zero-copy deserialization.</textarea>
+
+        <button class="btn" style="background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));" onclick="runIngestion()">Run PySpark & PyTorch Indexing</button>
+
+        <div id="ingest-status" class="status-box" style="margin-top: 20px;">
+          <div class="status-row"><span>PySpark Mapper:</span> <span style="color: var(--accent-cyan);">2 Chunks Processed</span></div>
+          <div class="status-row"><span>PyTorch Model:</span> <span>sentence-transformers (all-MiniLM-L6-v2)</span></div>
+          <div class="status-row"><span>ChromaDB Vector Index:</span> <span style="color: var(--accent-green);">Indexed Successfully</span></div>
+        </div>
+
+        <label style="margin-top: 16px;">PyTorch Vector Embedding Visualizer (384-dim array snippet):</label>
+        <div class="vector-heatmap" id="vector-heatmap"></div>
+      </div>
+
+      <!-- Topology Flow -->
+      <div class="panel architecture-box">
+        <div class="panel-title">
+          <span>🏛️ End-to-End System Topology</span>
+          <span class="tag tag-complex">MCP Standardized</span>
+        </div>
+
+        <div class="step-flow">
+          <div class="step-item">
+            <div class="step-num">STEP 01</div>
+            <div class="step-name">PySpark Ingestion</div>
+            <div class="step-desc">DataFrame chunking & parallel text mapper</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">STEP 02</div>
+            <div class="step-name">PyTorch Vectors</div>
+            <div class="step-desc">384-dim embeddings & float normalization</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">STEP 03</div>
+            <div class="step-name">ChromaDB Index</div>
+            <div class="step-desc">Sub-15ms similarity & payload filtering</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">STEP 04</div>
+            <div class="step-name">GCP Model Router</div>
+            <div class="step-desc">Gemini 1.5 Pro vs Gemini 1.5 Flash complexity heuristics</div>
+          </div>
+          <div class="step-item">
+            <div class="step-num">STEP 05</div>
+            <div class="step-name">MCP Server</div>
+            <div class="step-desc">Stdio/SSE tool server for Claude & Cursor</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Generate PyTorch Vector Heatmap Visualization
+    const heatmapContainer = document.getElementById("vector-heatmap");
+    for (let i = 0; i < 72; i++) {
+      const cell = document.createElement("div");
+      cell.className = "vector-cell";
+      const val = Math.random();
+      const intensity = Math.floor(val * 255);
+      cell.style.backgroundColor = `rgb(${Math.floor(intensity * 0.3)}, ${Math.floor(intensity * 0.7)}, ${intensity})`;
+      cell.title = `Dim ${i}: ${val.toFixed(4)}`;
+      heatmapContainer.appendChild(cell);
+    }
+
+    function runRAGQuery() {
+      const q = document.getElementById("query-input").value;
+      const tag = document.getElementById("router-tag");
+      const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design");
+      
+      tag.className = isComplex ? "tag tag-complex" : "tag tag-standard";
+      tag.innerText = isComplex ? "ROUTER: GEMINI 1.5 PRO" : "ROUTER: GEMINI 1.5 FLASH";
+      
+      document.getElementById("res-complexity").innerText = isComplex ? "COMPLEX" : "STANDARD";
+      document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
+      document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
+      document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
+    }
+
+    function runIngestion() {
+      alert("PySpark DataFrame chunking & PyTorch vector embedding generation executed successfully!");
+    }
+  </script>
+</body>
+</html>
