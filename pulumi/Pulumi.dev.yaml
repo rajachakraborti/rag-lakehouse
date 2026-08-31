@@ -1,0 +1,5 @@
+config:
+  gcp:project: your-gcp-project-id-here
+  gcp:region: us-central1
+  rag-lakehouse-infra:app_name: rag-lakehouse
+  rag-lakehouse-infra:container_image: gcr.io/your-gcp-project-id-here/rag-lakehouse:latest

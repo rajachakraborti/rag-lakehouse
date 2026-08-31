@@ -1,0 +1,6 @@
+name: rag-lakehouse-infra
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: Pulumi Python Infrastructure-as-Code for RAG-Lakehouse on GCP (Cloud Run v2 + GCS Lakehouse Bucket + IAM)
