@@ -3,14 +3,14 @@ Hybrid Search & RAG Synthesis Engine
 Author: Raja Chakraborty
 
 Combines PyTorch vector similarity search, ChromaDB metadata filtering,
-and AWS Bedrock LLM context synthesis into a high-accuracy RAG pipeline.
+and GCP Vertex AI / Gemini LLM context synthesis into a high-accuracy RAG pipeline.
 """
 
 import logging
 from typing import Dict, Any, List
 from config import VECTOR_DB_DIR
 from ingestion_spark import compute_embeddings
-from bedrock_router import route_prompt_to_bedrock
+from gcp_router import route_prompt_to_gcp
 
 logger = logging.getLogger("rag-lakehouse-engine")
 
@@ -60,7 +60,7 @@ class RAGEngine:
         # Fallback snippet if collection is empty in test mode
         if not retrieved_docs:
             retrieved_docs.append({
-                "text": f"Knowledge base entry regarding '{query}' — RoaringBitmap and Bedrock Model Router architecture.",
+                "text": f"Knowledge base entry regarding '{query}' — RoaringBitmap and GCP Vertex AI Router architecture.",
                 "metadata": {"source": "knowledge_lakehouse", "category": category_filter or "general"},
                 "distance": 0.05
             })
@@ -70,14 +70,14 @@ class RAGEngine:
 
     def query_rag(self, query: str, top_k: int = 3, category_filter: str = None) -> Dict[str, Any]:
         """
-        End-to-end RAG pipeline: Vector Retrieval -> Context Formatting -> Bedrock Model Routing.
+        End-to-end RAG pipeline: Vector Retrieval -> Context Formatting -> GCP Gemini Router.
         """
         docs = self.retrieve(query=query, top_k=top_k, category_filter=category_filter)
 
         context_str = "\n---\n".join([f"[{d['metadata'].get('source', 'doc')}]: {d['text']}" for d in docs])
 
-        # Synthesize answer via Bedrock Router
-        synthesis = route_prompt_to_bedrock(prompt=query, context=context_str)
+        # Synthesize answer via GCP Router
+        synthesis = route_prompt_to_gcp(prompt=query, context=context_str)
 
         return {
             "query": query,

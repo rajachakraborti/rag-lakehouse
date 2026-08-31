@@ -1,6 +1,6 @@
-# 🚀 RAG-Lakehouse — Distributed Data Pipeline & Multi-Cloud LLM Engine
+# 🚀 RAG-Lakehouse — Distributed Data Pipeline & GCP LLM Engine
 
-> **An enterprise-grade, multi-cloud AI infrastructure platform** built with **PySpark, PyTorch, Vector DBs, AWS Bedrock, GCP Cloud Run, Pulumi IaC (Python), and Model Context Protocol (MCP)**.
+> **An enterprise-grade GCP & AI infrastructure platform** built with **PySpark, PyTorch, Vector DBs, GCP Cloud Run, GCP Vertex AI / Gemini, Pulumi IaC (Python), and Model Context Protocol (MCP)**.
 > Provides high-throughput document lakehouse processing, hybrid vector search, dynamic model routing, and agentic tool integration.
 
 ---
@@ -16,10 +16,10 @@ graph TD
     Agent["🤖 AI Agent (Claude Desktop / Cursor / Custom Agent)"] -->|MCP Protocol stdio/SSE| MCPServer["🔌 MCP Tool Server (mcp_server.py)\n(Exposes RAG & Model Tools)"]
     MCPServer --> Engine["🧠 Hybrid RAG Engine (rag_engine.py)"]
     Engine <-->|Vector Retrieval| VectorDB
-    Engine --> Router["🔀 Multi-Cloud LLM Router (bedrock_router.py)\n(Complexity Heuristics)"]
+    Engine --> Router["🔀 GCP Model Router (gcp_router.py)\n(Complexity Heuristics)"]
 
-    Router -->|Complex Reasoning| Sonnet["☁️ AWS Bedrock: Claude 3.5 Sonnet"]
-    Router -->|Low-Latency Q&A| Gemini["☁️ GCP Vertex AI / Llama 3"]
+    Router -->|Complex Reasoning| Pro["☁️ GCP Vertex AI: Gemini 1.5 Pro"]
+    Router -->|Low-Latency Q&A| Flash["☁️ GCP Vertex AI: Gemini 1.5 Flash"]
 ```
 
 ---
@@ -29,7 +29,7 @@ graph TD
 - **Distributed Data Ingestion:** Uses PySpark DataFrames for parallel text extraction, chunking, and metadata mapping across large document volumes.
 - **PyTorch Vector Embeddings:** Computes high-dimensional vector representations utilizing local hardware acceleration (CUDA GPU, MPS, or CPU).
 - **Hybrid Vector Search:** Combines vector similarity scoring with structured metadata filtering in persistent vector storage.
-- **Intelligent Multi-Cloud Model Router:** Dynamically routes queries between AWS Bedrock (Claude 3.5 Sonnet) and GCP/Llama models based on prompt complexity heuristics to optimize latency and token cost.
+- **GCP Intelligent Model Router:** Dynamically routes queries between Gemini 1.5 Pro (complex reasoning) and Gemini 1.5 Flash (low-latency Q&A) based on prompt complexity heuristics to optimize latency and token cost.
 - **Native MCP Tool Server (`mcp_server.py`):** Exposes search, ingestion, and routing tools directly to AI agents over standard Model Context Protocol.
 - **Python-Native IaC (`pulumi/`):** Provisions serverless GCP Cloud Run v2 container instances, Google Cloud Storage buckets, and least-privilege IAM roles using Pulumi in Python.
 
@@ -42,9 +42,9 @@ graph TD
 | **Data Processing** | PySpark | Distributed DataFrame transformation & text chunking |
 | **Embeddings** | PyTorch / Sentence-Transformers | 384-dim dense vector computation |
 | **Vector Index** | ChromaDB / Qdrant | Persistent vector similarity index & payload filtering |
-| **Model Gateway** | AWS Bedrock / GCP Vertex AI | Heuristic LLM routing (Claude 3.5 Sonnet vs Llama 3) |
+| **Model Gateway** | GCP Vertex AI / Gemini API | Heuristic LLM routing (Gemini 1.5 Pro vs Gemini 1.5 Flash) |
 | **Agent Interface** | MCP (Model Context Protocol) 2.x | Standardized tool calling interface for AI agents |
-| **Infrastructure** | Pulumi (Python) | Serverless Cloud Run v2 & GCS bucket IaC |
+| **Infrastructure** | Pulumi (Python) | Serverless GCP Cloud Run v2 & GCS bucket IaC |
 
 ---
 
@@ -60,7 +60,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. Environment Configuration
-Copy `.env.example` to `.env` and set your credentials:
+Copy `.env.example` to `.env` and set your GCP configuration:
 
 ```bash
 cp .env.example .env

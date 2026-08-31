@@ -1,8 +1,8 @@
 """
-Configuration & Security Manager for RAG-Lakehouse Engine
+Configuration Manager for RAG-Lakehouse Engine (GCP & Open Source)
 Author: Raja Chakraborty
 
-Handles environment variables, AWS Bedrock credential verification,
+Handles environment variables, GCP Vertex AI / Gemini credential verification,
 PyTorch compute device selection, and safe mock fallback mode for open-source execution.
 """
 
@@ -18,14 +18,13 @@ logger = logging.getLogger("rag-lakehouse")
 # Load environment variables from .env file if present
 load_dotenv()
 
-# Security & AWS Configuration
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+# Security & GCP Configuration
+GCP_PROJECT = os.getenv("GCP_PROJECT", "my-gcp-project")
+GCP_REGION = os.getenv("GCP_REGION", "us-central1")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-BEDROCK_PRIMARY_MODEL_ID = os.getenv("BEDROCK_PRIMARY_MODEL_ID", "anthropic.claude-3-5-sonnet-20240620-v1:0")
-BEDROCK_FAST_MODEL_ID = os.getenv("BEDROCK_FAST_MODEL_ID", "meta.llama3-8b-instruct-v1:0")
-BEDROCK_EMBEDDING_MODEL_ID = os.getenv("BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
+GCP_PRIMARY_MODEL_ID = os.getenv("GCP_PRIMARY_MODEL_ID", "gemini-1.5-pro")
+GCP_FAST_MODEL_ID = os.getenv("GCP_FAST_MODEL_ID", "gemini-1.5-flash")
 
 # Local Storage & Computation Settings
 VECTOR_DB_DIR = os.getenv("VECTOR_DB_DIR", "./chroma_storage")
@@ -44,27 +43,22 @@ def get_pytorch_device() -> str:
 
 TORCH_DEVICE = get_pytorch_device()
 
-# AWS Bedrock Client Initializer with Mock Fallback for Open Repositories
-def get_bedrock_client():
+# GCP Gemini Client Initializer with Mock Fallback for Open Repositories
+def get_gcp_gemini_client():
     """
-    Initializes boto3 Bedrock client if valid AWS credentials exist.
-    If no AWS credentials are configured, returns None to trigger Mock Bedrock Mode
-    (allowing safe public GitHub execution without AWS account dependencies).
+    Initializes Google Generative AI (Gemini) client if GEMINI_API_KEY exists.
+    If no API key is configured, returns None to trigger Mock GCP Mode
+    (allowing safe public GitHub execution without GCP account dependencies).
     """
-    if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and "your_aws" not in AWS_ACCESS_KEY_ID:
+    if GEMINI_API_KEY and "your_gemini" not in GEMINI_API_KEY:
         try:
-            import boto3
-            client = boto3.client(
-                "bedrock-runtime",
-                region_name=AWS_REGION,
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            )
-            logger.info("✅ AWS Bedrock Client initialized successfully with environment credentials.")
-            return client
+            import google.generativeai as genai
+            genai.configure(api_key=GEMINI_API_KEY)
+            logger.info("✅ GCP Gemini Client initialized successfully with environment credentials.")
+            return genai
         except Exception as e:
-            logger.warning(f"⚠️ Failed to initialize AWS Bedrock client ({str(e)}). Defaulting to Mock Mode.")
+            logger.warning(f"⚠️ Failed to initialize GCP Gemini client ({str(e)}). Defaulting to Mock Mode.")
             return None
     else:
-        logger.info("ℹ️ No AWS credentials detected in environment. Running in [Mock Bedrock Mode] (Safe for Open GitHub).")
+        logger.info("ℹ️ No GCP API key detected in environment. Running in [Mock GCP Mode] (Safe for Open GitHub).")
         return None
