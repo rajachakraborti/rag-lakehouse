@@ -1,0 +1,29 @@
+# Environment & Secrets
+.env
+*.pem
+*.key
+aws_credentials
+.aws/
+
+# Python & PyTorch Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+
+# Vector DB & Spark Storage
+chroma_storage/
+qdrant_storage/
+spark-warehouse/
+metastore_db/
+*.log
+
+# Data & Model Checkpoints
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+models/checkpoints/*
