@@ -76,7 +76,7 @@ cloud_run_service = gcp.cloudrunv2.Service(
                     {"name": "VECTOR_DB_DIR", "value": "/tmp/chroma_storage"},
                 ],
                 "ports": [
-                    {"containerPort": 8000}
+                    {"container_port": 8000}
                 ],
             }
         ],
