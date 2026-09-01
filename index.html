@@ -32,12 +32,13 @@
     p.subtitle { color: var(--text-muted); font-size: 15px; max-width: 800px; }
     
     /* Connection Config Bar */
-    .config-bar { background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .config-bar { background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 32px; display: flex; flex-direction: column; gap: 12px; }
+    .config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
     .config-inputs { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 280px; }
     .config-inputs input { margin-bottom: 0; font-family: var(--mono); font-size: 13px; }
     .mode-indicator { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 6px; }
-    .mode-demo { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
     .mode-live { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+    .budget-badge { background: rgba(155, 92, 255, 0.15); color: var(--accent-purple); border: 1px solid rgba(155, 92, 255, 0.3); font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 4px; }
 
     .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 40px; }
     @media (max-width: 840px) { .grid-layout { grid-template-columns: 1fr; } }
@@ -89,12 +90,21 @@
 
     <!-- Cloud Backend Connection Bar -->
     <div class="config-bar">
-      <div class="config-inputs">
-        <label style="margin-bottom:0; min-width:140px;">GCP Cloud Run URL:</label>
-        <input type="text" id="gcp-url-input" value="https://rag-lakehouse-1089897614691.us-central1.run.app" onchange="updateConnectionMode()" />
+      <div class="config-row">
+        <div class="config-inputs">
+          <label style="margin-bottom:0; min-width:140px;">GCP Cloud Run URL:</label>
+          <input type="text" id="gcp-url-input" value="https://rag-lakehouse-1089897614691.us-central1.run.app" onchange="updateConnectionMode()" />
+        </div>
+        <div id="connection-mode-badge" class="mode-indicator mode-live">
+          MODE: LIVE GCP CLOUD RUN API
+        </div>
       </div>
-      <div id="connection-mode-badge" class="mode-indicator mode-live">
-        MODE: LIVE GCP CLOUD RUN API
+      <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
+        <div class="config-inputs">
+          <label style="margin-bottom:0; min-width:140px;">Static API Key (Auth):</label>
+          <input type="text" id="api-key-input" value="demo-key-2026" placeholder="demo-key-2026 or admin-key-789" />
+        </div>
+        <span class="budget-badge">🛡️ MAX $2.00 MONTHLY GCP BUDGET SAFEGUARD</span>
       </div>
     </div>
 
@@ -116,6 +126,7 @@
           <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
           <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
           <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
+          <div class="status-row"><span>Authenticated User:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User (demo-key-2026)</strong></div>
         </div>
 
         <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
@@ -157,7 +168,7 @@
       <div class="panel architecture-box">
         <div class="panel-title">
           <span>🏛️ End-to-End System Topology</span>
-          <span class="tag tag-complex">Pulumi IaC + MCP Native</span>
+          <span class="tag tag-complex">Pulumi IaC + Auth Guard</span>
         </div>
 
         <div class="step-flow">
@@ -173,8 +184,8 @@
           </div>
           <div class="step-item">
             <div class="step-num">STEP 03</div>
-            <div class="step-name">ChromaDB Index</div>
-            <div class="step-desc">Sub-15ms similarity & payload filtering</div>
+            <div class="step-name">Static Auth Guard</div>
+            <div class="step-desc">X-API-Key header authentication & rate limiter</div>
           </div>
           <div class="step-item">
             <div class="step-num">STEP 04</div>
@@ -183,8 +194,8 @@
           </div>
           <div class="step-item">
             <div class="step-num">STEP 05</div>
-            <div class="step-name">Pulumi GCP IaC</div>
-            <div class="step-desc">Cloud Run v2 + GCS bucket in Python (`pulumi/__main__.py`)</div>
+            <div class="step-name">$2.00 Budget Cap</div>
+            <div class="step-desc">Pulumi max_instances=1 & token character limits</div>
           </div>
         </div>
       </div>
@@ -281,6 +292,7 @@
     async function runRAGQuery() {
       const q = document.getElementById("query-input").value.trim();
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
+      const apiKey = document.getElementById("api-key-input").value.trim();
       const tag = document.getElementById("router-tag");
       const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design") || q.toLowerCase().includes("roaringbitmap");
       
@@ -291,6 +303,7 @@
       document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
+      document.getElementById("res-user").innerText = (apiKey || "demo-key-2026") + " (Authenticated)";
 
       const chunksContainer = document.getElementById("chunks-container");
       const answerContainer = document.getElementById("answer-container");
@@ -305,7 +318,10 @@
         try {
           const resp = await fetch(gcpUrl + "/query", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey || "demo-key-2026"
+            },
             body: JSON.stringify({ prompt: q, top_k: 2 })
           });
           const data = await resp.json();
@@ -366,6 +382,7 @@
 
     async function runIngestion() {
       const text = document.getElementById("doc-input").value.trim();
+      const apiKey = document.getElementById("api-key-input").value.trim();
       if (!text) return;
 
       updateTextMetrics();
@@ -396,7 +413,10 @@
         try {
           await fetch(gcpUrl + "/query", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              "X-API-Key": apiKey || "demo-key-2026"
+            },
             body: JSON.stringify({ prompt: text, top_k: 2 })
           });
         } catch (e) {

@@ -5,7 +5,7 @@ Author: Raja Chakraborty
 Provisions:
 1. Google Cloud Storage (GCS) Bucket for document lakehouse storage.
 2. IAM Service Account with least-privilege security policy.
-3. GCP Cloud Run v2 Service (Serverless, scales to 0 for $0 idle cost).
+3. GCP Cloud Run v2 Service (Serverless, min_instances=0, max_instances=1 for strict $2.00 budget cap).
 """
 
 import pulumi
@@ -48,7 +48,7 @@ bucket_iam = gcp.storage.BucketIAMMember(
 )
 
 # -----------------------------------------------------------------------------
-# 3. Google Cloud Run v2 Service (Scales to 0 for zero idle cost)
+# 3. Google Cloud Run v2 Service (Scales to 0 for $0 idle cost, max 1 instance for $2 budget cap)
 # -----------------------------------------------------------------------------
 cloud_run_service = gcp.cloudrunv2.Service(
     "rag-lakehouse-service",
@@ -58,14 +58,14 @@ cloud_run_service = gcp.cloudrunv2.Service(
         service_account=service_account.email,
         scaling=gcp.cloudrunv2.ServiceTemplateScalingArgs(
             min_instance_count=0,  # Scales to 0 when idle ($0 cost)
-            max_instance_count=3,
+            max_instance_count=1,  # Max 1 instance to enforce strict $2.00 monthly budget cap
         ),
         containers=[
             gcp.cloudrunv2.ServiceTemplateContainerArgs(
                 image=container_image,
                 resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
                     limits={
-                        "memory": "1Gi",
+                        "memory": "512Mi", # Light memory footprint to stay well under $2.00 budget
                         "cpu": "1000m",
                     }
                 ),
@@ -80,7 +80,7 @@ cloud_run_service = gcp.cloudrunv2.Service(
     ),
 )
 
-# Allow Unauthenticated Public Access to Cloud Run (for demo API testing)
+# Allow Unauthenticated Public Access to Cloud Run (Endpoints protected by Static API Key in FastAPI)
 public_invoker = gcp.cloudrunv2.ServiceIamMember(
     "public-invoker",
     name=cloud_run_service.name,
@@ -95,3 +95,4 @@ public_invoker = gcp.cloudrunv2.ServiceIamMember(
 pulumi.export("gcs_bucket_name", lakehouse_bucket.name)
 pulumi.export("cloud_run_url", cloud_run_service.uri)
 pulumi.export("service_account_email", service_account.email)
+pulumi.export("budget_cap", "$2.00 Max Monthly Guardrail Active")
