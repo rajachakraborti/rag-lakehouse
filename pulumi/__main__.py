@@ -65,7 +65,7 @@ cloud_run_service = gcp.cloudrunv2.Service(
                 image=container_image,
                 resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
                     limits={
-                        "memory": "512Mi", # Light memory footprint to stay well under $2.00 budget
+                        "memory": "1Gi", # 1Gi memory for fast PyTorch & ChromaDB initialization ($0 idle cost)
                         "cpu": "1000m",
                     }
                 ),
