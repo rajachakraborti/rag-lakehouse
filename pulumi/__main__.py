@@ -75,9 +75,6 @@ cloud_run_service = gcp.cloudrunv2.Service(
                     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCS_BUCKET_NAME", value=lakehouse_bucket.name),
                     gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="VECTOR_DB_DIR", value="/tmp/chroma_storage"),
                 ],
-                ports=[
-                    gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(container_port=8000)
-                ],
             )
         ],
     ),
