@@ -61,24 +61,24 @@ cloud_run_service = gcp.cloudrunv2.Service(
             max_instance_count=3,
         ),
         containers=[
-            {
-                "image": container_image,
-                "resources": {
-                    "limits": {
+            gcp.cloudrunv2.ServiceTemplateContainerArgs(
+                image=container_image,
+                resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
+                    limits={
                         "memory": "1Gi",
                         "cpu": "1000m",
                     }
-                },
-                "envs": [
-                    {"name": "GCP_PROJECT", "value": gcp_project},
-                    {"name": "GCP_REGION", "value": gcp_region},
-                    {"name": "GCS_BUCKET_NAME", "value": lakehouse_bucket.name},
-                    {"name": "VECTOR_DB_DIR", "value": "/tmp/chroma_storage"},
+                ),
+                envs=[
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT", value=gcp_project),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_REGION", value=gcp_region),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCS_BUCKET_NAME", value=lakehouse_bucket.name),
+                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="VECTOR_DB_DIR", value="/tmp/chroma_storage"),
                 ],
-                "ports": [
-                    {"container_port": 8000}
+                ports=[
+                    gcp.cloudrunv2.ServiceTemplateContainerPortsArgs(container_port=8000)
                 ],
-            }
+            )
         ],
     ),
 )
