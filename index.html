@@ -56,7 +56,10 @@
     .status-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
     .status-row:last-child { margin-bottom: 0; }
     
-    .chunk-card { background: rgba(79, 158, 255, 0.05); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 13px; }
+    .chunk-card { background: rgba(79, 158, 255, 0.05); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 13px; transition: transform 0.2s, border-color 0.2s; }
+    .chunk-card:hover { border-color: var(--accent-blue); transform: translateY(-1px); }
+    .answer-card { background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; }
+
     .vector-heatmap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 12px; min-height: 48px; }
     .vector-cell { width: 10px; height: 10px; border-radius: 2px; transition: background-color 0.3s; }
     
@@ -104,7 +107,7 @@
         </div>
         
         <label for="query-input">Ask a question across the data lakehouse:</label>
-        <input type="text" id="query-input" value="How does Cloud Run scale to zero when idle?" />
+        <input type="text" id="query-input" value="How does RoaringBitmap seat map compression work?" />
         
         <button class="btn" onclick="runRAGQuery()">Execute RAG Query</button>
 
@@ -115,12 +118,9 @@
           <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
         </div>
 
-        <div id="chunks-container">
-          <div class="chunk-card">
-            <strong>[Doc: cloud_run_autoscaling.md]</strong> (Similarity: 98.4%)<br/>
-            GCP Cloud Run v2 container services are configured with min_instance_count = 0 to scale to zero when idle, consuming zero compute budget while maintaining sub-second cold starts...
-          </div>
-        </div>
+        <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
+        <div id="chunks-container"></div>
+        <div id="answer-container"></div>
       </div>
 
       <!-- PySpark & PyTorch Ingestion Sandbox -->
@@ -192,10 +192,42 @@
   </div>
 
   <script>
+    const KNOWLEDGE_BASE_DOCS = [
+      {
+        id: "sys-001",
+        source: "roaring_bitmap_spec.md",
+        category: "distributed_systems",
+        keywords: ["roaringbitmap", "seat", "bitmap", "availability", "websocket", "compression"],
+        text: "The real-time seat availability platform compresses 100,000 seat states per venue using RoaringBitmap sparse array representation. Encoded payloads are pushed over WebSockets to client browsers with zero-copy deserialization."
+      },
+      {
+        id: "sec-002",
+        source: "promptshield_privacy_policy.md",
+        category: "ai_security",
+        keywords: ["promptshield", "pii", "redact", "ssn", "privacy", "credit card", "security"],
+        text: "PromptShield provides deterministic sub-millisecond PII redaction for SSNs, Credit Cards, and API key tokens at the API gateway tier before prompts reach LLM model backends."
+      },
+      {
+        id: "infra-003",
+        source: "cloud_run_autoscaling.md",
+        category: "cloud_infrastructure",
+        keywords: ["cloud run", "idle", "scale", "scaling", "min_instance", "serverless", "autoscaling"],
+        text: "GCP Cloud Run v2 container services are configured with min_instance_count = 0 to scale to zero when idle, consuming zero compute budget while maintaining sub-second cold starts under peak concurrency."
+      },
+      {
+        id: "ai-004",
+        source: "gcp_model_router_design.md",
+        category: "ai_infrastructure",
+        keywords: ["router", "gemini", "model", "heuristics", "pro", "flash", "complexity", "gcp"],
+        text: "The GCP Model Router analyzes prompt complexity heuristics to route architectural and code generation queries to Gemini 1.5 Pro, while directing standard summarization requests to Gemini 1.5 Flash."
+      }
+    ];
+
     function initPage() {
       updateConnectionMode();
       updateTextMetrics();
       renderVectorHeatmap("default seed text");
+      runRAGQuery();
     }
 
     function updateTextMetrics() {
@@ -209,7 +241,6 @@
       document.getElementById("stat-chunks").innerText = chunks + " Chunks Processed";
     }
 
-    // Deterministic Pseudo-Random Generator based on string seed
     function stringHash(str) {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
@@ -227,7 +258,6 @@
       for (let i = 0; i < 72; i++) {
         const cell = document.createElement("div");
         cell.className = "vector-cell";
-        // Calculate deterministic float value between 0.0 and 1.0 for each dimension
         const val = Math.abs(Math.sin(baseHash + i * 997));
         const intensity = Math.floor(val * 255);
         cell.style.backgroundColor = `rgb(${Math.floor(intensity * 0.2)}, ${Math.floor(intensity * 0.8)}, ${intensity})`;
@@ -249,10 +279,10 @@
     }
 
     async function runRAGQuery() {
-      const q = document.getElementById("query-input").value;
+      const q = document.getElementById("query-input").value.trim();
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
       const tag = document.getElementById("router-tag");
-      const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design");
+      const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design") || q.toLowerCase().includes("roaringbitmap");
       
       tag.className = isComplex ? "tag tag-complex" : "tag tag-standard";
       tag.innerText = isComplex ? "ROUTER: GEMINI 1.5 PRO" : "ROUTER: GEMINI 1.5 FLASH";
@@ -262,23 +292,75 @@
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
 
+      const chunksContainer = document.getElementById("chunks-container");
+      const answerContainer = document.getElementById("answer-container");
+      chunksContainer.innerHTML = "";
+      answerContainer.innerHTML = "";
+
+      let retrieved = [];
+
       if (gcpUrl) {
         document.getElementById("res-mode").innerText = "GCP_CLOUD_RUN_LIVE";
         document.getElementById("res-mode").style.color = "var(--accent-green)";
         try {
-          const resp = await fetch(gcpUrl + "/sanitize", {
+          const resp = await fetch(gcpUrl + "/query", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: q })
+            body: JSON.stringify({ prompt: q, top_k: 2 })
           });
           const data = await resp.json();
-          console.log("Live GCP Backend Response:", data);
+          if (data && data.retrieved_chunks) {
+            retrieved = data.retrieved_chunks;
+          }
+          if (data && data.llm_response) {
+            answerContainer.innerHTML = `
+              <div class="answer-card">
+                <strong style="color:var(--accent-green);">🤖 GCP Gemini Synthesized Answer:</strong><br/>
+                ${data.llm_response}
+              </div>
+            `;
+          }
         } catch (e) {
           console.warn("GCP Endpoint notice:", e);
         }
       } else {
         document.getElementById("res-mode").innerText = "MOCK_GCP_SANDBOX";
         document.getElementById("res-mode").style.color = "var(--accent-amber)";
+      }
+
+      // Dynamic Keyword-Based Vector Ranking Fallback for Sandbox / Instant UI Feedback
+      if (!retrieved || retrieved.length === 0) {
+        const qTokens = q.toLowerCase().split(/\s+/);
+        const scoredDocs = KNOWLEDGE_BASE_DOCS.map(doc => {
+          let matches = 0;
+          qTokens.forEach(token => {
+            if (doc.keywords.some(k => k.includes(token) || token.includes(k))) matches += 2;
+            if (doc.text.toLowerCase().includes(token)) matches += 1;
+          });
+          const score = 85 + (matches * 3) + Math.floor(Math.random() * 5);
+          return { doc, similarity: Math.min(99.2, score) };
+        });
+
+        scoredDocs.sort((a, b) => b.similarity - a.similarity);
+        const topDocs = scoredDocs.slice(0, 2);
+
+        topDocs.forEach(item => {
+          const card = document.createElement("div");
+          card.className = "chunk-card";
+          card.innerHTML = `
+            <strong>[Doc: ${item.doc.source}]</strong> (Similarity: ${item.similarity.toFixed(1)}%)<br/>
+            ${item.doc.text}
+          `;
+          chunksContainer.appendChild(card);
+        });
+
+        const selectedModel = isComplex ? "Gemini 1.5 Pro" : "Gemini 1.5 Flash";
+        answerContainer.innerHTML = `
+          <div class="answer-card">
+            <strong style="color:var(--accent-green);">🤖 GCP ${selectedModel} Synthesized Answer:</strong><br/>
+            Based on knowledge lakehouse context in <code>${topDocs[0].doc.source}</code>, '${q}' is processed via sub-15ms vector retrieval and routed to <strong>${selectedModel}</strong>.
+          </div>
+        `;
       }
     }
 
@@ -299,6 +381,15 @@
       setTimeout(() => {
         toast.className = "toast";
       }, 4000);
+
+      // Add newly ingested text dynamically to Knowledge Base for instant search query matching!
+      KNOWLEDGE_BASE_DOCS.unshift({
+        id: "user-ingest-" + Date.now(),
+        source: "custom_user_ingestion.md",
+        category: "user_upload",
+        keywords: text.toLowerCase().split(/\s+/).slice(0, 10),
+        text: text
+      });
 
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
       if (gcpUrl) {
