@@ -1,41 +1,42 @@
 """
-Pulumi Infrastructure-as-Code (Python) for RAG-Lakehouse on GCP
+Pulumi Python Infrastructure-as-Code for RAG-Lakehouse Engine
 Author: Raja Chakraborty
 
-Deploys serverless Google Cloud Run v2 (scales to zero for $0 idle cost),
-Google Cloud Storage Bucket for document data lake, and IAM service accounts.
+Provisions:
+1. Google Cloud Storage (GCS) Bucket for document lakehouse storage.
+2. IAM Service Account with least-privilege security policy.
+3. GCP Cloud Run v2 Service (Serverless, scales to 0 for $0 idle cost).
 """
 
 import pulumi
 import pulumi_gcp as gcp
 
-# Load Config
+# Load Pulumi Configuration
 config = pulumi.Config()
-gcp_config = pulumi.Config("gcp")
-gcp_project = gcp_config.get("project") or "my-gcp-project"
-gcp_region = gcp_config.get("region") or "us-central1"
-app_name = config.get("app_name") or "rag-lakehouse"
-container_image = config.get("container_image") or f"gcr.io/{gcp_project}/{app_name}:latest"
+gcp_project = config.get("gcp:project") or "stellar-horizon-166823"
+gcp_region = config.get("gcp:region") or "us-central1"
+app_name = config.get("app_name") or "rag-lakehouse-app"
+container_image = config.get("container_image") or f"gcr.io/{gcp_project}/rag-lakehouse:latest"
 
 # -----------------------------------------------------------------------------
-# 1. Google Cloud Storage Bucket (Document Data Lake)
+# 1. Google Cloud Storage Bucket (Document Lakehouse Data Store)
 # -----------------------------------------------------------------------------
 lakehouse_bucket = gcp.storage.Bucket(
     "lakehouse-bucket",
     name=f"{app_name}-docs-lakehouse",
-    location=gcp_region.upper(),
+    location=gcp_region,
+    force_destroy=True,
     uniform_bucket_level_access=True,
     versioning=gcp.storage.BucketVersioningArgs(enabled=True),
-    force_destroy=True,  # Safe cleanup for demo envs
 )
 
 # -----------------------------------------------------------------------------
-# 2. Service Account for Cloud Run Least-Privilege IAM
+# 2. IAM Service Account for Cloud Run Application
 # -----------------------------------------------------------------------------
 service_account = gcp.serviceaccount.Account(
     "cloud-run-sa",
-    account_id=f"{app_name}-sa",
-    display_name=f"Service Account for {app_name} Cloud Run",
+    account_id="rag-lakehouse-sa",
+    display_name="RAG Lakehouse Service Account",
 )
 
 # Grant Storage Object Viewer to Service Account
@@ -60,24 +61,24 @@ cloud_run_service = gcp.cloudrunv2.Service(
             max_instance_count=3,
         ),
         containers=[
-            gcp.cloudrunv2.ServiceTemplateContainerArgs(
-                image=container_image,
-                resources=gcp.cloudrunv2.ServiceTemplateContainerResourcesArgs(
-                    limits={
+            {
+                "image": container_image,
+                "resources": {
+                    "limits": {
                         "memory": "1Gi",
                         "cpu": "1000m",
                     }
-                ),
-                envs=[
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_PROJECT", value=gcp_project),
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCP_REGION", value=gcp_region),
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="GCS_BUCKET_NAME", value=lakehouse_bucket.name),
-                    gcp.cloudrunv2.ServiceTemplateContainerEnvArgs(name="VECTOR_DB_DIR", value="/tmp/chroma_storage"),
+                },
+                "envs": [
+                    {"name": "GCP_PROJECT", "value": gcp_project},
+                    {"name": "GCP_REGION", "value": gcp_region},
+                    {"name": "GCS_BUCKET_NAME", "value": lakehouse_bucket.name},
+                    {"name": "VECTOR_DB_DIR", "value": "/tmp/chroma_storage"},
                 ],
-                ports=[
-                    gcp.cloudrunv2.ServiceTemplateContainerPortArgs(container_port=8000)
+                "ports": [
+                    {"containerPort": 8000}
                 ],
-            )
+            }
         ],
     ),
 )
@@ -92,9 +93,8 @@ public_invoker = gcp.cloudrunv2.ServiceIamMember(
 )
 
 # -----------------------------------------------------------------------------
-# Exports
+# Exports / Infrastructure Outputs
 # -----------------------------------------------------------------------------
 pulumi.export("gcs_bucket_name", lakehouse_bucket.name)
-pulumi.export("cloud_run_service_name", cloud_run_service.name)
 pulumi.export("cloud_run_url", cloud_run_service.uri)
 pulumi.export("service_account_email", service_account.email)
