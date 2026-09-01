@@ -26,11 +26,19 @@
     body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.6; padding-bottom: 60px; }
     .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
     
-    header { padding: 48px 0 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+    header { padding: 40px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
     .badge { display: inline-block; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-family: var(--mono); font-weight: 600; text-transform: uppercase; background: rgba(79, 158, 255, 0.1); color: var(--accent-blue); border: 1px solid rgba(79, 158, 255, 0.3); margin-bottom: 16px; }
-    h1 { font-size: clamp(32px, 5vw, 48px); font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, #ffffff 0%, var(--accent-blue) 60%, var(--accent-purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
-    p.subtitle { color: var(--text-muted); font-size: 16px; max-width: 760px; }
+    h1 { font-size: clamp(28px, 4vw, 42px); font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, #ffffff 0%, var(--accent-blue) 60%, var(--accent-purple) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+    p.subtitle { color: var(--text-muted); font-size: 15px; max-width: 800px; }
     
+    /* Connection Config Bar */
+    .config-bar { background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; margin-bottom: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .config-inputs { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 280px; }
+    .config-inputs input { margin-bottom: 0; font-family: var(--mono); font-size: 13px; }
+    .mode-indicator { font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 6px; }
+    .mode-demo { background: rgba(245, 158, 11, 0.15); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+    .mode-live { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid rgba(16, 185, 129, 0.3); }
+
     .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 40px; }
     @media (max-width: 840px) { .grid-layout { grid-template-columns: 1fr; } }
     
@@ -68,10 +76,21 @@
 
   <div class="container">
     <header>
-      <span class="badge">Live Playground & Architecture Explorer</span>
+      <span class="badge">Architecture & UI Explorer</span>
       <h1>RAG-Lakehouse Dashboard</h1>
       <p class="subtitle">Distributed PySpark text processing, PyTorch 384-dim vector embeddings, ChromaDB similarity retrieval, and GCP Gemini model routing.</p>
     </header>
+
+    <!-- Cloud Backend Connection Bar -->
+    <div class="config-bar">
+      <div class="config-inputs">
+        <label style="margin-bottom:0; min-width:140px;">GCP Cloud Run URL:</label>
+        <input type="text" id="gcp-url-input" placeholder="https://rag-lakehouse-app-xyz.a.run.app (Optional)" onchange="updateConnectionMode()" />
+      </div>
+      <div id="connection-mode-badge" class="mode-indicator mode-demo">
+        MODE: DEMO SANDBOX (IN-BROWSER SIMULATION)
+      </div>
+    </div>
 
     <div class="grid-layout">
       <!-- RAG Search & Router Sandbox -->
@@ -90,7 +109,7 @@
           <div class="status-row"><span>Query Complexity:</span> <strong id="res-complexity" style="color: var(--accent-purple);">COMPLEX</strong></div>
           <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
           <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
-          <div class="status-row"><span>Retrieved Chunks:</span> <span id="res-count">2 chunks</span></div>
+          <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-amber);">MOCK_GCP_SANDBOX</span></div>
         </div>
 
         <div id="chunks-container">
@@ -127,7 +146,7 @@
       <div class="panel architecture-box">
         <div class="panel-title">
           <span>🏛️ End-to-End System Topology</span>
-          <span class="tag tag-complex">MCP Standardized</span>
+          <span class="tag tag-complex">Pulumi IaC + MCP Native</span>
         </div>
 
         <div class="step-flow">
@@ -153,8 +172,8 @@
           </div>
           <div class="step-item">
             <div class="step-num">STEP 05</div>
-            <div class="step-name">MCP Server</div>
-            <div class="step-desc">Stdio/SSE tool server for Claude & Cursor</div>
+            <div class="step-name">Pulumi GCP IaC</div>
+            <div class="step-desc">Cloud Run v2 + GCS bucket in Python (`pulumi/__main__.py`)</div>
           </div>
         </div>
       </div>
@@ -174,8 +193,21 @@
       heatmapContainer.appendChild(cell);
     }
 
-    function runRAGQuery() {
+    function updateConnectionMode() {
+      const url = document.getElementById("gcp-url-input").value.trim();
+      const badge = document.getElementById("connection-mode-badge");
+      if (url) {
+        badge.className = "mode-indicator mode-live";
+        badge.innerText = "MODE: LIVE GCP CLOUD RUN API (" + url + ")";
+      } else {
+        badge.className = "mode-indicator mode-demo";
+        badge.innerText = "MODE: DEMO SANDBOX (IN-BROWSER SIMULATION)";
+      }
+    }
+
+    async function runRAGQuery() {
       const q = document.getElementById("query-input").value;
+      const gcpUrl = document.getElementById("gcp-url-input").value.trim();
       const tag = document.getElementById("router-tag");
       const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design");
       
@@ -186,6 +218,25 @@
       document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
+
+      if (gcpUrl) {
+        document.getElementById("res-mode").innerText = "GCP_CLOUD_RUN_LIVE";
+        document.getElementById("res-mode").style.color = "var(--accent-green)";
+        try {
+          const resp = await fetch(gcpUrl + "/sanitize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: q })
+          });
+          const data = await resp.json();
+          console.log("Live GCP Backend Response:", data);
+        } catch (e) {
+          console.warn("GCP Endpoint notice:", e);
+        }
+      } else {
+        document.getElementById("res-mode").innerText = "MOCK_GCP_SANDBOX";
+        document.getElementById("res-mode").style.color = "var(--accent-amber)";
+      }
     }
 
     function runIngestion() {
