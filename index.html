@@ -47,8 +47,8 @@
     .panel-title { font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; }
     
     label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 8px; }
-    textarea, input[type="text"] { width: 100%; background: #03060d; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--sans); font-size: 14px; padding: 12px 16px; transition: border-color 0.2s; margin-bottom: 16px; }
-    textarea:focus, input[type="text"]:focus { outline: none; border-color: var(--accent-blue); }
+    textarea, input[type="text"], input[type="password"] { width: 100%; background: #03060d; border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--sans); font-size: 14px; padding: 12px 16px; transition: border-color 0.2s; margin-bottom: 16px; }
+    textarea:focus, input[type="text"]:focus, input[type="password"]:focus { outline: none; border-color: var(--accent-blue); }
     
     .btn { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color: white; font-weight: 600; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(79, 158, 255, 0.4); }
@@ -102,7 +102,7 @@
       <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
         <div class="config-inputs">
           <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
-          <input type="text" id="api-key-input" placeholder="Enter API key (e.g. demo-key-2026)" value="demo-key-2026" />
+          <input type="password" id="api-key-input" placeholder="Optional API Key (pre-configured)..." value="" />
         </div>
         <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
       </div>
@@ -292,7 +292,8 @@
     async function runRAGQuery() {
       const q = document.getElementById("query-input").value.trim();
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
-      const apiKey = document.getElementById("api-key-input").value.trim();
+      const userEnteredKey = document.getElementById("api-key-input").value.trim();
+      const activeKey = userEnteredKey || "demo-key-2026";
       const tag = document.getElementById("router-tag");
       const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design") || q.toLowerCase().includes("roaringbitmap");
       
@@ -303,7 +304,7 @@
       document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
-      document.getElementById("res-user").innerText = (apiKey || "demo-key-2026") === "admin-key-789" ? "Admin User" : "Demo User";
+      document.getElementById("res-user").innerText = activeKey === "admin-key-789" ? "Admin User" : "Demo User";
 
       const chunksContainer = document.getElementById("chunks-container");
       const answerContainer = document.getElementById("answer-container");
@@ -320,7 +321,7 @@
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
-              "X-API-Key": apiKey || "demo-key-2026"
+              "X-API-Key": activeKey
             },
             body: JSON.stringify({ prompt: q, top_k: 2 })
           });
@@ -382,7 +383,8 @@
 
     async function runIngestion() {
       const text = document.getElementById("doc-input").value.trim();
-      const apiKey = document.getElementById("api-key-input").value.trim();
+      const userEnteredKey = document.getElementById("api-key-input").value.trim();
+      const activeKey = userEnteredKey || "demo-key-2026";
       if (!text) return;
 
       updateTextMetrics();
@@ -415,7 +417,7 @@
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
-              "X-API-Key": apiKey || "demo-key-2026"
+              "X-API-Key": activeKey
             },
             body: JSON.stringify({ prompt: text, top_k: 2 })
           });
