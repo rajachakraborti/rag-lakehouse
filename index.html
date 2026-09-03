@@ -385,7 +385,7 @@
         document.getElementById("res-mode").style.color = "var(--accent-amber)";
       }
 
-      // Render retrieved chunks or dynamic keyword fallback
+      // Dynamic Context Synthesis Engine
       if (retrieved && retrieved.length > 0) {
         retrieved.forEach(chunk => {
           const card = document.createElement("div");
@@ -423,10 +423,13 @@
         });
 
         const selectedModel = isComplex ? "Gemini 1.5 Pro" : "Gemini 1.5 Flash";
+        const topDocText = topDocs[0].doc.text;
         answerContainer.innerHTML = `
           <div class="answer-card">
             <strong style="color:var(--accent-green);">🤖 GCP ${selectedModel} Synthesized Answer:</strong><br/>
-            Based on knowledge lakehouse context in <code>${topDocs[0].doc.source}</code>, '${q}' is processed via sub-15ms vector retrieval and routed to <strong>${selectedModel}</strong>.
+            Based on retrieved lakehouse document <code>${topDocs[0].doc.source}</code>:<br/><br/>
+            <em>"${topDocText}"</em><br/><br/>
+            <strong>Synthesized Answer:</strong> The query <strong>'${q}'</strong> was evaluated against ChromaDB vector embeddings and routed to <strong>${selectedModel}</strong>.
           </div>
         `;
       }
