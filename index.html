@@ -16,6 +16,7 @@
       --accent-purple: #9b5cff;
       --accent-cyan: #00d4ff;
       --accent-green: #10b981;
+      --accent-red: #ef4444;
       --accent-amber: #f59e0b;
       --text: #e2e8f0;
       --text-muted: #94a3b8;
@@ -60,6 +61,7 @@
     .chunk-card { background: rgba(79, 158, 255, 0.05); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 13px; transition: transform 0.2s, border-color 0.2s; }
     .chunk-card:hover { border-color: var(--accent-blue); transform: translateY(-1px); }
     .answer-card { background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; }
+    .error-card { background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; color: #fca5a5; font-family: var(--mono); }
 
     .vector-heatmap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 12px; min-height: 48px; }
     .vector-cell { width: 10px; height: 10px; border-radius: 2px; transition: background-color 0.3s; }
@@ -102,7 +104,7 @@
       <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
         <div class="config-inputs">
           <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
-          <input type="password" id="api-key-input" placeholder="Optional API Key (pre-configured)..." value="" />
+          <input type="text" id="api-key-input" placeholder="Enter API Key (e.g. demo-key-2026)" value="demo-key-2026" />
         </div>
         <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
       </div>
@@ -203,6 +205,8 @@
   </div>
 
   <script>
+    const VALID_KEYS = ["demo-key-2026", "admin-key-789"];
+
     const KNOWLEDGE_BASE_DOCS = [
       {
         id: "sys-001",
@@ -292,11 +296,38 @@
     async function runRAGQuery() {
       const q = document.getElementById("query-input").value.trim();
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
-      const userEnteredKey = document.getElementById("api-key-input").value.trim();
-      const activeKey = userEnteredKey || "demo-key-2026";
+      const userKey = document.getElementById("api-key-input").value.trim();
       const tag = document.getElementById("router-tag");
       const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design") || q.toLowerCase().includes("roaringbitmap");
       
+      const chunksContainer = document.getElementById("chunks-container");
+      const answerContainer = document.getElementById("answer-container");
+      chunksContainer.innerHTML = "";
+      answerContainer.innerHTML = "";
+
+      // Strict Authentication Guard Check
+      if (!userKey || !VALID_KEYS.includes(userKey)) {
+        tag.className = "tag tag-complex";
+        tag.innerText = "ROUTER: BLOCKED";
+        
+        document.getElementById("res-complexity").innerText = "UNAUTHORIZED";
+        document.getElementById("res-complexity").style.color = "var(--accent-red)";
+        document.getElementById("res-model").innerText = "None (Blocked)";
+        document.getElementById("res-latency").innerText = "0.00 ms";
+        document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
+        document.getElementById("res-mode").style.color = "var(--accent-red)";
+        document.getElementById("res-user").innerText = "Unauthenticated";
+        document.getElementById("res-user").style.color = "var(--accent-red)";
+
+        answerContainer.innerHTML = `
+          <div class="error-card">
+            🔒 <strong>HTTP 401 Unauthorized:</strong> Access Denied.<br/>
+            Please enter a valid X-API-Key in the top connection bar (e.g. <code>demo-key-2026</code> or <code>admin-key-789</code>).
+          </div>
+        `;
+        return;
+      }
+
       tag.className = isComplex ? "tag tag-complex" : "tag tag-standard";
       tag.innerText = isComplex ? "ROUTER: GEMINI 1.5 PRO" : "ROUTER: GEMINI 1.5 FLASH";
       
@@ -304,12 +335,8 @@
       document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
-      document.getElementById("res-user").innerText = activeKey === "admin-key-789" ? "Admin User" : "Demo User";
-
-      const chunksContainer = document.getElementById("chunks-container");
-      const answerContainer = document.getElementById("answer-container");
-      chunksContainer.innerHTML = "";
-      answerContainer.innerHTML = "";
+      document.getElementById("res-user").innerText = userKey === "admin-key-789" ? "Admin User" : "Demo User";
+      document.getElementById("res-user").style.color = "var(--accent-cyan)";
 
       let retrieved = [];
 
@@ -321,10 +348,22 @@
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
-              "X-API-Key": activeKey
+              "X-API-Key": userKey
             },
             body: JSON.stringify({ prompt: q, top_k: 2 })
           });
+          
+          if (resp.status === 401) {
+            document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
+            document.getElementById("res-mode").style.color = "var(--accent-red)";
+            answerContainer.innerHTML = `
+              <div class="error-card">
+                🔒 <strong>HTTP 401 Unauthorized:</strong> GCP Cloud Run API rejected the provided key.
+              </div>
+            `;
+            return;
+          }
+
           const data = await resp.json();
           if (data && data.retrieved_chunks) {
             retrieved = data.retrieved_chunks;
@@ -383,9 +422,13 @@
 
     async function runIngestion() {
       const text = document.getElementById("doc-input").value.trim();
-      const userEnteredKey = document.getElementById("api-key-input").value.trim();
-      const activeKey = userEnteredKey || "demo-key-2026";
+      const userKey = document.getElementById("api-key-input").value.trim();
       if (!text) return;
+
+      if (!userKey || !VALID_KEYS.includes(userKey)) {
+        alert("🔒 401 Unauthorized: Please enter a valid API key (e.g. demo-key-2026) to perform document ingestion.");
+        return;
+      }
 
       updateTextMetrics();
       renderVectorHeatmap(text);
@@ -401,7 +444,6 @@
         toast.className = "toast";
       }, 4000);
 
-      // Add newly ingested text dynamically to Knowledge Base for instant search query matching!
       KNOWLEDGE_BASE_DOCS.unshift({
         id: "user-ingest-" + Date.now(),
         source: "custom_user_ingestion.md",
@@ -417,7 +459,7 @@
             method: "POST",
             headers: { 
               "Content-Type": "application/json",
-              "X-API-Key": activeKey
+              "X-API-Key": userKey
             },
             body: JSON.stringify({ prompt: text, top_k: 2 })
           });
