@@ -101,10 +101,10 @@
       </div>
       <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
         <div class="config-inputs">
-          <label style="margin-bottom:0; min-width:140px;">Static API Key (Auth):</label>
-          <input type="text" id="api-key-input" value="demo-key-2026" placeholder="demo-key-2026 or admin-key-789" />
+          <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
+          <input type="text" id="api-key-input" placeholder="Enter API key (e.g. demo-key-2026)" value="demo-key-2026" />
         </div>
-        <span class="budget-badge">🛡️ MAX $2.00 MONTHLY GCP BUDGET SAFEGUARD</span>
+        <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
       </div>
     </div>
 
@@ -126,7 +126,7 @@
           <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
           <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
           <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
-          <div class="status-row"><span>Authenticated User:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User (demo-key-2026)</strong></div>
+          <div class="status-row"><span>Authenticated Identity:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User</strong></div>
         </div>
 
         <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
@@ -194,7 +194,7 @@
           </div>
           <div class="step-item">
             <div class="step-num">STEP 05</div>
-            <div class="step-name">$2.00 Budget Cap</div>
+            <div class="step-name">Budget Guardrail</div>
             <div class="step-desc">Pulumi max_instances=1 & token character limits</div>
           </div>
         </div>
@@ -303,7 +303,7 @@
       document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
       document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
       document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
-      document.getElementById("res-user").innerText = (apiKey || "demo-key-2026") + " (Authenticated)";
+      document.getElementById("res-user").innerText = (apiKey || "demo-key-2026") === "admin-key-789" ? "Admin User" : "Demo User";
 
       const chunksContainer = document.getElementById("chunks-container");
       const answerContainer = document.getElementById("answer-container");
