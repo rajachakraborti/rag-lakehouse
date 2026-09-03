@@ -1,0 +1,32 @@
+[
+  {
+    "doc_id": "doc-001",
+    "source": "raja_chakraborty_profile.md",
+    "category": "engineering_leadership",
+    "text": "Raja Chakraborty is a Senior Software Engineer with expertise in Java backend microservices, PySpark distributed data engineering, and AI systems. His career achievements include original high-throughput RoaringBitmap seat map implementations, IEEE Senior Membership recognition, EB-1A extraordinary ability petitioning in AI/systems engineering, and building sub-millisecond PII redaction proxies."
+  },
+  {
+    "doc_id": "doc-002",
+    "source": "roaring_bitmap_spec.md",
+    "category": "distributed_systems",
+    "text": "The real-time seat availability platform compresses 100,000 seat states per venue using RoaringBitmap sparse array representation. Encoded payloads are pushed over WebSockets to client browsers with zero-copy deserialization."
+  },
+  {
+    "doc_id": "doc-003",
+    "source": "promptshield_privacy_policy.md",
+    "category": "ai_security",
+    "text": "PromptShield provides deterministic sub-millisecond PII redaction for SSNs, Credit Cards, and API key tokens at the API gateway tier before prompts reach LLM model backends."
+  },
+  {
+    "doc_id": "doc-004",
+    "source": "cloud_run_autoscaling.md",
+    "category": "cloud_infrastructure",
+    "text": "GCP Cloud Run v2 container services are configured with min_instance_count = 0 to scale to zero when idle, consuming zero compute budget while maintaining sub-second cold starts under peak concurrency."
+  },
+  {
+    "doc_id": "doc-005",
+    "source": "gcp_model_router_design.md",
+    "category": "ai_infrastructure",
+    "text": "The GCP Model Router analyzes prompt complexity heuristics to route architectural and code generation queries to Gemini 1.5 Pro, while directing standard summarization requests to Gemini 1.5 Flash."
+  }
+]
