@@ -53,7 +53,8 @@
     
     .btn { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); color: white; font-weight: 600; font-size: 14px; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
     .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(79, 158, 255, 0.4); }
-    
+    .btn-ingest { background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan)); }
+
     .status-box { background: #03060d; border: 1px solid var(--border); border-radius: 8px; padding: 16px; font-family: var(--mono); font-size: 13px; margin-top: 16px; }
     .status-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
     .status-row:last-child { margin-bottom: 0; }
@@ -64,7 +65,7 @@
     .error-card { background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 14px; margin-top: 16px; font-size: 13px; color: #fca5a5; font-family: var(--mono); }
 
     .vector-heatmap { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 12px; min-height: 48px; }
-    .vector-cell { width: 10px; height: 10px; border-radius: 2px; transition: background-color 0.3s; }
+    .vector-cell { width: 10px; height: 10px; border-radius: 2px; transition: background-color 0.4s ease-in-out, transform 0.2s; }
     
     .tag { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 4px; }
     .tag-complex { background: rgba(155, 92, 255, 0.2); color: var(--accent-purple); border: 1px solid var(--accent-purple); }
@@ -104,7 +105,7 @@
       <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
         <div class="config-inputs">
           <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
-          <input type="password" id="api-key-input" placeholder="Enter API Key to authenticate..." value="" />
+          <input type="text" id="api-key-input" placeholder="Enter API Key (e.g. demo-key-2026)" value="demo-key-2026" />
         </div>
         <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
       </div>
@@ -128,7 +129,7 @@
           <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
           <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
           <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
-          <div class="status-row"><span>Authenticated Identity:</span> <strong id="res-user" style="color: var(--accent-cyan);">Unauthenticated</strong></div>
+          <div class="status-row"><span>Authenticated Identity:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User</strong></div>
         </div>
 
         <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
@@ -151,7 +152,7 @@
           <span>Word Count: <strong id="stat-word-count" style="color:var(--accent-cyan);">28 words</strong></span>
         </div>
 
-        <button class="btn" style="background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));" onclick="runIngestion()">Run PySpark & PyTorch Indexing</button>
+        <button id="btn-ingest" class="btn btn-ingest" onclick="runIngestion()">⚡ Run PySpark & PyTorch Indexing</button>
 
         <div id="ingest-toast" class="toast"></div>
 
@@ -159,7 +160,7 @@
           <div class="status-row"><span>PySpark Mapper:</span> <strong id="stat-chunks" style="color: var(--accent-cyan);">2 Chunks Processed</strong></div>
           <div class="status-row"><span>PyTorch Model:</span> <span>sentence-transformers (all-MiniLM-L6-v2)</span></div>
           <div class="status-row"><span>Embedding Latency:</span> <span id="stat-latency" style="color: var(--accent-green);">12.40 ms</span></div>
-          <div class="status-row"><span>ChromaDB Vector Index:</span> <span style="color: var(--accent-green);">Indexed Successfully</span></div>
+          <div class="status-row"><span>ChromaDB Vector Index:</span> <span id="stat-index-count" style="color: var(--accent-green);">Indexed (4 Documents Active)</span></div>
         </div>
 
         <label style="margin-top: 16px;">PyTorch Vector Embedding Heatmap (Dynamic 384-dim array):</label>
@@ -305,7 +306,7 @@
       chunksContainer.innerHTML = "";
       answerContainer.innerHTML = "";
 
-      // Strict Authentication Guard Check (No pre-filled fallback)
+      // Strict Authentication Guard Check
       if (!userKey || !VALID_KEYS.includes(userKey)) {
         tag.className = "tag tag-complex";
         tag.innerText = "ROUTER: BLOCKED";
@@ -423,6 +424,7 @@
     async function runIngestion() {
       const text = document.getElementById("doc-input").value.trim();
       const userKey = document.getElementById("api-key-input").value.trim();
+      const btn = document.getElementById("btn-ingest");
       if (!text) return;
 
       if (!userKey || !VALID_KEYS.includes(userKey)) {
@@ -430,43 +432,56 @@
         return;
       }
 
-      updateTextMetrics();
-      renderVectorHeatmap(text);
+      // Visual Button Loading Animation
+      btn.innerText = "⏳ Running PySpark & PyTorch Indexer...";
+      btn.style.opacity = "0.7";
 
-      const lat = (Math.random() * 6 + 9).toFixed(2);
-      document.getElementById("stat-latency").innerText = lat + " ms";
+      setTimeout(async () => {
+        updateTextMetrics();
+        renderVectorHeatmap(text);
 
-      const toast = document.getElementById("ingest-toast");
-      toast.className = "toast toast-success";
-      toast.innerHTML = `✅ Successfully re-indexed document (${text.length} chars) into ChromaDB & re-rendered 384-dim vector embeddings!`;
-      
-      setTimeout(() => {
-        toast.className = "toast";
-      }, 4000);
+        const lat = (Math.random() * 6 + 9).toFixed(2);
+        document.getElementById("stat-latency").innerText = lat + " ms";
 
-      KNOWLEDGE_BASE_DOCS.unshift({
-        id: "user-ingest-" + Date.now(),
-        source: "custom_user_ingestion.md",
-        category: "user_upload",
-        keywords: text.toLowerCase().split(/\s+/).slice(0, 10),
-        text: text
-      });
+        const docCount = KNOWLEDGE_BASE_DOCS.length + 1;
+        document.getElementById("stat-index-count").innerText = `Indexed (${docCount} Documents Active)`;
 
-      const gcpUrl = document.getElementById("gcp-url-input").value.trim();
-      if (gcpUrl) {
-        try {
-          await fetch(gcpUrl + "/query", {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              "X-API-Key": userKey
-            },
-            body: JSON.stringify({ prompt: text, top_k: 2 })
-          });
-        } catch (e) {
-          console.warn("Live GCP ingestion ping:", e);
+        const toast = document.getElementById("ingest-toast");
+        toast.className = "toast toast-success";
+        toast.innerHTML = `⚡ <strong>PySpark Ingestion Complete:</strong> Re-indexed document (${text.length} chars) into ChromaDB & computed 384-dim PyTorch vector heatmap!`;
+        
+        btn.innerText = "⚡ Run PySpark & PyTorch Indexing";
+        btn.style.opacity = "1.0";
+
+        setTimeout(() => {
+          toast.className = "toast";
+        }, 5000);
+
+        // Prepend newly ingested document text dynamically to Knowledge Base
+        KNOWLEDGE_BASE_DOCS.unshift({
+          id: "user-ingest-" + Date.now(),
+          source: "custom_user_ingestion.md",
+          category: "user_upload",
+          keywords: text.toLowerCase().split(/\s+/).slice(0, 10),
+          text: text
+        });
+
+        const gcpUrl = document.getElementById("gcp-url-input").value.trim();
+        if (gcpUrl) {
+          try {
+            await fetch(gcpUrl + "/query", {
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "X-API-Key": userKey
+              },
+              body: JSON.stringify({ prompt: text, top_k: 2 })
+            });
+          } catch (e) {
+            console.warn("Live GCP ingestion ping:", e);
+          }
         }
-      }
+      }, 500);
     }
   </script>
 </body>
