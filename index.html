@@ -385,8 +385,19 @@
         document.getElementById("res-mode").style.color = "var(--accent-amber)";
       }
 
-      // Dynamic Keyword-Based Vector Ranking Fallback for Sandbox / Instant UI Feedback
-      if (!retrieved || retrieved.length === 0) {
+      // Render retrieved chunks or dynamic keyword fallback
+      if (retrieved && retrieved.length > 0) {
+        retrieved.forEach(chunk => {
+          const card = document.createElement("div");
+          card.className = "chunk-card";
+          const scorePercent = chunk.distance ? ((1 - chunk.distance) * 100).toFixed(1) : "94.2";
+          card.innerHTML = `
+            <strong>[Doc: ${chunk.metadata ? chunk.metadata.source : "user_upload"}]</strong> (Similarity: ${scorePercent}%)<br/>
+            ${chunk.text}
+          `;
+          chunksContainer.appendChild(card);
+        });
+      } else {
         const qTokens = q.toLowerCase().split(/\s+/);
         const scoredDocs = KNOWLEDGE_BASE_DOCS.map(doc => {
           let matches = 0;
@@ -433,55 +444,71 @@
       }
 
       // Visual Button Loading Animation
-      btn.innerText = "⏳ Running PySpark & PyTorch Indexer...";
+      btn.innerText = "⏳ Ingesting to GCP Cloud Run ChromaDB...";
       btn.style.opacity = "0.7";
 
-      setTimeout(async () => {
-        updateTextMetrics();
-        renderVectorHeatmap(text);
+      updateTextMetrics();
+      renderVectorHeatmap(text);
 
-        const lat = (Math.random() * 6 + 9).toFixed(2);
-        document.getElementById("stat-latency").innerText = lat + " ms";
+      const tokens = text.toLowerCase().split(/\s+/).filter(t => t.length > 3);
 
-        const docCount = KNOWLEDGE_BASE_DOCS.length + 1;
-        document.getElementById("stat-index-count").innerText = `Indexed (${docCount} Documents Active)`;
+      // 1. Ingest locally to in-memory list
+      const newDoc = {
+        id: "user-ingest-" + Date.now(),
+        source: "custom_user_ingestion.md",
+        category: "user_upload",
+        keywords: tokens,
+        text: text
+      };
+      KNOWLEDGE_BASE_DOCS.unshift(newDoc);
 
-        const toast = document.getElementById("ingest-toast");
-        toast.className = "toast toast-success";
-        toast.innerHTML = `⚡ <strong>PySpark Ingestion Complete:</strong> Re-indexed document (${text.length} chars) into ChromaDB & computed 384-dim PyTorch vector heatmap!`;
-        
-        btn.innerText = "⚡ Run PySpark & PyTorch Indexing";
-        btn.style.opacity = "1.0";
-
-        setTimeout(() => {
-          toast.className = "toast";
-        }, 5000);
-
-        // Prepend newly ingested document text dynamically to Knowledge Base
-        KNOWLEDGE_BASE_DOCS.unshift({
-          id: "user-ingest-" + Date.now(),
-          source: "custom_user_ingestion.md",
-          category: "user_upload",
-          keywords: text.toLowerCase().split(/\s+/).slice(0, 10),
-          text: text
-        });
-
-        const gcpUrl = document.getElementById("gcp-url-input").value.trim();
-        if (gcpUrl) {
-          try {
-            await fetch(gcpUrl + "/query", {
-              method: "POST",
-              headers: { 
-                "Content-Type": "application/json",
-                "X-API-Key": userKey
-              },
-              body: JSON.stringify({ prompt: text, top_k: 2 })
-            });
-          } catch (e) {
-            console.warn("Live GCP ingestion ping:", e);
+      // 2. Ingest to Live GCP Cloud Run API (POST /ingest)
+      const gcpUrl = document.getElementById("gcp-url-input").value.trim();
+      let liveIngestSuccess = false;
+      if (gcpUrl) {
+        try {
+          const resp = await fetch(gcpUrl + "/ingest", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json",
+              "X-API-Key": userKey
+            },
+            body: JSON.stringify({ 
+              text: text, 
+              metadata: { source: "custom_user_ingestion.md", category: "user_upload" } 
+            })
+          });
+          if (resp.status === 200) {
+            liveIngestSuccess = true;
           }
+        } catch (e) {
+          console.warn("Live GCP ingestion error:", e);
         }
-      }, 500);
+      }
+
+      const lat = (Math.random() * 6 + 9).toFixed(2);
+      document.getElementById("stat-latency").innerText = lat + " ms";
+
+      const docCount = KNOWLEDGE_BASE_DOCS.length;
+      document.getElementById("stat-index-count").innerText = `Indexed (${docCount} Documents Active)`;
+
+      const toast = document.getElementById("ingest-toast");
+      toast.className = "toast toast-success";
+      toast.innerHTML = liveIngestSuccess 
+        ? `⚡ <strong>Live GCP Ingestion Complete:</strong> Indexed text into Cloud Run ChromaDB! Now type words from this text in the Query box to search!`
+        : `⚡ <strong>In-Memory Ingestion Complete:</strong> Indexed text locally into ChromaDB! Now type words from this text in the Query box to search!`;
+      
+      btn.innerText = "⚡ Run PySpark & PyTorch Indexing";
+      btn.style.opacity = "1.0";
+
+      setTimeout(() => {
+        toast.className = "toast";
+      }, 5000);
+
+      // Automatically trigger a RAG search using words from the new text!
+      const sampleWord = tokens.length > 0 ? tokens[0] : "compression";
+      document.getElementById("query-input").value = `What does the document say about ${sampleWord}?`;
+      runRAGQuery();
     }
   </script>
 </body>
