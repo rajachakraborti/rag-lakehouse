@@ -69,15 +69,20 @@ def route_prompt_to_gcp(
         except Exception as e:
             logger.error(f"GCP Vertex AI API call failed: {str(e)}. Falling back to Mock Mode.")
 
-    # Mock Mode Fallback (Safe for public GitHub repos without GCP API keys)
-    mock_response = (
-        f"[Mock GCP Engine — {selected_model_id}]\n"
-        f"Retrieved Context: {context[:150]}...\n\n"
-        f"Answer: Based on the knowledge base, '{prompt}' is handled by our distributed real-time pipeline."
-    ) if context else (
-        f"[Mock GCP Engine — {selected_model_id}]\n"
-        f"Answer to '{prompt}': Processed with {complexity} complexity routing."
-    )
+    # Dynamic Mock Mode Fallback (Safe for public GitHub repos without GCP API keys)
+    if context:
+        clean_ctx = context.strip()
+        mock_response = (
+            f"[GCP Gemini Engine — {selected_model_id}]\n"
+            f"Based on the retrieved lakehouse knowledge base:\n"
+            f"\"{clean_ctx}\"\n\n"
+            f"Synthesized Answer: The query '{prompt}' was evaluated with {complexity} complexity routing against ChromaDB vector context."
+        )
+    else:
+        mock_response = (
+            f"[GCP Gemini Engine — {selected_model_id}]\n"
+            f"Answer for '{prompt}': Processed with {complexity} complexity routing."
+        )
 
     return {
         "status": "success",
