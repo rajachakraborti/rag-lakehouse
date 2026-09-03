@@ -4,15 +4,15 @@ Author: Raja Chakraborty
 
 Provides:
 1. Static User API Key Authentication (X-API-Key: demo-key-2026).
-2. Rate Limiter Guard (Max 20 requests/minute per client IP).
-3. Prompt Token Guard (Max 2000 characters to enforce $2.00 monthly cost cap).
-4. RAG Lakehouse vector search and GCP Gemini router endpoints.
+2. Swagger UI (/docs) Authorize button & explicit Header input.
+3. Rate Limiter Guard (Max 20 requests/minute per client IP).
+4. Prompt Token Guard (Max 2000 characters to enforce $2.00 monthly cost cap).
 """
 
 import time
 from typing import Optional, Dict
 from collections import defaultdict
-from fastapi import FastAPI, HTTPException, Security, Depends, status
+from fastapi import FastAPI, HTTPException, Security, Depends, status, Header
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,8 +21,8 @@ from gcp_router import route_prompt_to_gcp
 
 app = FastAPI(
     title="RAG-Lakehouse Authenticated Cloud API",
-    description="Serverless API endpoint protected by Static API Key Auth and $2.00 Budget Rate Limiting.",
-    version="1.1.0"
+    description="Serverless API endpoint protected by Static API Key Auth and $2.00 Budget Rate Limiting. Use 'demo-key-2026' or 'admin-key-789'.",
+    version="1.2.0"
 )
 
 # Enable CORS for GitHub Pages UI
@@ -41,21 +41,19 @@ STATIC_API_KEYS = {
     "public-sandbox-key": "Public Explorer"
 }
 
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-# Rate Limiter & Token Guard Settings ($2.00 Budget Safeguards)
-MAX_REQUESTS_PER_MINUTE = 20
-MAX_PROMPT_CHAR_LENGTH = 2000
-request_timestamps: Dict[str, list] = defaultdict(list)
+# Swagger UI API Key Header Security Scheme
+api_key_header_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def verify_api_key(api_key: Optional[str] = Depends(API_KEY_HEADER)) -> str:
+def verify_api_key(
+    header_key: Optional[str] = Header(None, alias="X-API-Key", description="Static API Key for authentication (e.g. demo-key-2026)"),
+    security_key: Optional[str] = Security(api_key_header_scheme)
+) -> str:
     """
-    Validates static API Key from X-API-Key HTTP header.
-    Allows demo fallback if key matches STATIC_API_KEYS dictionary.
+    Validates static API Key from X-API-Key HTTP header or Swagger UI Authorize lock.
     """
+    api_key = header_key or security_key
     if not api_key:
-        # Default fallback key for convenience during demo browsing
         return "public-sandbox-key"
     if api_key not in STATIC_API_KEYS:
         raise HTTPException(
@@ -65,13 +63,18 @@ def verify_api_key(api_key: Optional[str] = Depends(API_KEY_HEADER)) -> str:
     return api_key
 
 
+# Rate Limiter & Token Guard Settings ($2.00 Budget Safeguards)
+MAX_REQUESTS_PER_MINUTE = 20
+MAX_PROMPT_CHAR_LENGTH = 2000
+request_timestamps: Dict[str, list] = defaultdict(list)
+
+
 def enforce_budget_rate_limit(user_key: str):
     """
     Enforces a strict sliding-window rate limit to guarantee GCP compute budget stays under $2.00.
     """
     now = time.time()
     timestamps = request_timestamps[user_key]
-    # Keep only timestamps within the last 60 seconds
     timestamps = [t for t in timestamps if now - t < 60]
     request_timestamps[user_key] = timestamps
 
@@ -97,14 +100,17 @@ def root():
     return {
         "status": "online",
         "platform": "RAG-Lakehouse on GCP Cloud Run v2",
-        "auth": "Static API Key (X-API-Key)",
+        "auth": "Static API Key (X-API-Key: demo-key-2026)",
         "budget_limit": "$2.00 Cap Safeguard Active",
         "docs": "/docs"
     }
 
 
 @app.post("/query")
-def query_rag_endpoint(req: QueryRequest, user_key: str = Depends(verify_api_key)):
+def query_rag_endpoint(
+    req: QueryRequest,
+    user_key: str = Depends(verify_api_key)
+):
     enforce_budget_rate_limit(user_key)
     
     if len(req.prompt) > MAX_PROMPT_CHAR_LENGTH:
@@ -119,7 +125,10 @@ def query_rag_endpoint(req: QueryRequest, user_key: str = Depends(verify_api_key
 
 
 @app.post("/sanitize")
-def sanitize_endpoint(req: QueryRequest, user_key: str = Depends(verify_api_key)):
+def sanitize_endpoint(
+    req: QueryRequest,
+    user_key: str = Depends(verify_api_key)
+):
     enforce_budget_rate_limit(user_key)
     
     if len(req.prompt) > MAX_PROMPT_CHAR_LENGTH:
