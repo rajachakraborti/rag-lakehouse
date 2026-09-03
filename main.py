@@ -5,7 +5,7 @@ Author: Raja Chakraborty
 Provides:
 1. Static User API Key Authentication (X-API-Key: demo-key-2026).
 2. Swagger UI (/docs) Authorize button & explicit Header input.
-3. Rate Limiter Guard (Max 20 requests/minute per client IP).
+3. Anti-Burst Sliding Window Rate Limiter (Max 20 req/min + Max 3 req/sec burst guard).
 4. Prompt Token Guard (Max 2000 characters to enforce $2.00 monthly cost cap).
 5. Dynamic Lakehouse Ingestion endpoint (POST /ingest).
 """
@@ -22,8 +22,8 @@ from gcp_router import route_prompt_to_gcp
 
 app = FastAPI(
     title="RAG-Lakehouse Authenticated Cloud API",
-    description="Serverless API endpoint protected by Static API Key Auth and $2.00 Budget Rate Limiting. Use 'demo-key-2026' or 'admin-key-789'.",
-    version="1.3.0"
+    description="Serverless API endpoint protected by Static API Key Auth, Anti-Burst Sliding Window Rate Limiter, and $2.00 Budget Cap.",
+    version="1.4.0"
 )
 
 # Enable CORS for GitHub Pages UI
@@ -66,24 +66,38 @@ def verify_api_key(
 
 # Rate Limiter & Token Guard Settings ($2.00 Budget Safeguards)
 MAX_REQUESTS_PER_MINUTE = 20
+MAX_BURST_PER_SECOND = 3  # Anti-burst guard preventing top-of-minute spike attacks
 MAX_PROMPT_CHAR_LENGTH = 2000
 request_timestamps: Dict[str, list] = defaultdict(list)
 
 
 def enforce_budget_rate_limit(user_key: str):
     """
-    Enforces a strict sliding-window rate limit to guarantee GCP compute budget stays under $2.00.
+    Enforces a dual-threshold sliding window log (60s window + 1s sub-window burst guard)
+    to prevent top-of-minute burst attacks and guarantee GCP compute budget stays under $2.00.
     """
     now = time.time()
     timestamps = request_timestamps[user_key]
-    timestamps = [t for t in timestamps if now - t < 60]
+
+    # 1. Prune timestamps older than 60.0 seconds
+    timestamps = [t for t in timestamps if now - t < 60.0]
     request_timestamps[user_key] = timestamps
 
+    # 2. Check 1-second sub-window burst cap (blocks top-of-minute 20-req burst in 100ms)
+    one_sec_bursts = [t for t in timestamps if now - t < 1.0]
+    if len(one_sec_bursts) >= MAX_BURST_PER_SECOND:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Burst limit exceeded (Max {MAX_BURST_PER_SECOND} req/sec to prevent top-of-minute burst attacks)."
+        )
+
+    # 3. Check 60-second sliding window cap
     if len(timestamps) >= MAX_REQUESTS_PER_MINUTE:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Rate limit exceeded (Max {MAX_REQUESTS_PER_MINUTE} requests/min to maintain $2.00 monthly budget cap)."
+            detail=f"Rate limit exceeded (Max {MAX_REQUESTS_PER_MINUTE} req/min to maintain $2.00 monthly budget cap)."
         )
+
     request_timestamps[user_key].append(now)
 
 
@@ -107,6 +121,7 @@ def root():
         "status": "online",
         "platform": "RAG-Lakehouse on GCP Cloud Run v2",
         "auth": "Static API Key (X-API-Key: demo-key-2026)",
+        "rate_limiter": "Anti-Burst Sliding Window (Max 20 req/min, Max 3 req/sec)",
         "budget_limit": "$2.00 Cap Safeguard Active",
         "docs": "/docs"
     }
