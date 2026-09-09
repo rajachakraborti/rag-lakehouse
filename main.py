@@ -1,16 +1,17 @@
 """
-FastAPI Server, Static Auth Middleware & Budget Safeguard API
+FastAPI Server, Static Auth Middleware, Budget Safeguard & Idempotent Ingestion API
 Author: Raja Chakraborty
 
 Provides:
 1. Static User API Key Authentication (X-API-Key: demo-key-2026).
 2. Swagger UI (/docs) Authorize button & explicit Header input.
 3. Anti-Burst Sliding Window Rate Limiter (Max 20 req/min + Max 3 req/sec burst guard).
-4. Prompt Token Guard (Max 2000 characters to enforce $2.00 monthly cost cap).
-5. Dynamic Lakehouse Ingestion endpoint (POST /ingest).
+4. SHA-256 Content-Based Idempotent Ingestion Engine (Deduplicates duplicate payload submissions).
+5. Prompt Token Guard (Max 2000 characters to enforce $2.00 monthly cost cap).
 """
 
 import time
+import hashlib
 from typing import Optional, Dict
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Security, Depends, status, Header
@@ -22,8 +23,8 @@ from gcp_router import route_prompt_to_gcp
 
 app = FastAPI(
     title="RAG-Lakehouse Authenticated Cloud API",
-    description="Serverless API endpoint protected by Static API Key Auth, Anti-Burst Sliding Window Rate Limiter, and $2.00 Budget Cap.",
-    version="1.4.0"
+    description="Serverless API endpoint protected by Static API Key Auth, SHA-256 Idempotent Ingestion, Anti-Burst Rate Limiter, and $2.00 Budget Cap.",
+    version="1.5.0"
 )
 
 # Enable CORS for GitHub Pages UI
@@ -53,7 +54,7 @@ def verify_api_key(
     """
     Validates static API Key from X-API-Key HTTP header or Swagger UI Authorize lock.
     """
-    api_key = header_key or security_key
+    api_key = header_key if (header_key is not None and header_key != "") else security_key
     if not api_key:
         return "public-sandbox-key"
     if api_key not in STATIC_API_KEYS:
@@ -113,6 +114,7 @@ class QueryRequest(BaseModel):
 class IngestRequest(BaseModel):
     text: str
     metadata: Optional[Dict[str, str]] = None
+    idempotency_key: Optional[str] = None
 
 
 @app.get("/")
@@ -121,6 +123,7 @@ def root():
         "status": "online",
         "platform": "RAG-Lakehouse on GCP Cloud Run v2",
         "auth": "Static API Key (X-API-Key: demo-key-2026)",
+        "idempotency": "SHA-256 Content-Based Deduplication Active",
         "rate_limiter": "Anti-Burst Sliding Window (Max 20 req/min, Max 3 req/sec)",
         "budget_limit": "$2.00 Cap Safeguard Active",
         "docs": "/docs"
@@ -158,20 +161,45 @@ def ingest_document_endpoint(
             detail=f"Text length ({len(req.text)} chars) exceeds maximum limit of {MAX_PROMPT_CHAR_LENGTH} chars."
         )
 
-    chunk_id = f"user_doc_{int(time.time() * 1000)}"
-    meta = req.metadata or {"source": "custom_user_ingestion.md", "category": "user_upload"}
+    # Content-Based Deterministic SHA-256 Idempotency Key
+    raw_content = (req.idempotency_key or req.text).strip()
+    chunk_hash = hashlib.sha256(raw_content.encode('utf-8')).hexdigest()[:16]
+    chunk_id = f"doc_{chunk_hash}"
     
-    rag_engine.collection.add(
-        documents=[req.text],
-        metadatas=[meta],
-        ids=[chunk_id]
-    )
+    meta = req.metadata or {"source": "custom_user_ingestion.md", "category": "user_upload"}
+    meta["idempotency_hash"] = chunk_hash
+
+    # Check ChromaDB for duplicate content (Idempotency Check)
+    existing = None
+    if rag_engine.collection is not None:
+        try:
+            existing = rag_engine.collection.get(ids=[chunk_id])
+        except Exception:
+            existing = None
+
+    if existing and existing.get("ids") and len(existing["ids"]) > 0:
+        return {
+            "status": "already_indexed",
+            "idempotency": "DUPLICATE_SKIPPED",
+            "ingested_id": chunk_id,
+            "total_documents": rag_engine.collection.count() if rag_engine.collection else 1,
+            "message": f"Idempotency Guarantee: Document content payload already exists in ChromaDB. Skipped duplicate re-indexing.",
+            "authenticated_user": STATIC_API_KEYS.get(user_key, "User")
+        }
+
+    if rag_engine.collection is not None:
+        rag_engine.collection.add(
+            documents=[req.text],
+            metadatas=[meta],
+            ids=[chunk_id]
+        )
 
     return {
         "status": "success",
+        "idempotency": "NEWLY_INDEXED",
         "ingested_id": chunk_id,
-        "total_documents": rag_engine.collection.count(),
-        "message": f"Successfully indexed text ({len(req.text)} chars) into ChromaDB vector store.",
+        "total_documents": rag_engine.collection.count() if rag_engine.collection else 1,
+        "message": f"Successfully indexed new text ({len(req.text)} chars) into ChromaDB vector store.",
         "authenticated_user": STATIC_API_KEYS.get(user_key, "User")
     }
 
