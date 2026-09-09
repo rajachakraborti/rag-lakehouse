@@ -1,22 +1,83 @@
-"""
-Hybrid Search & RAG Synthesis Engine
-Author: Raja Chakraborty
-
-Combines PyTorch vector similarity search, ChromaDB metadata filtering,
-and GCP Vertex AI / Gemini LLM context synthesis into a high-accuracy RAG pipeline.
-Does not generate hallucinated fallback strings when queries match no vector context.
-"""
-
+import math
+import re
 import hashlib
 import logging
 from typing import Dict, Any, List
 from config import VECTOR_DB_DIR
 from ingestion_spark import compute_embeddings
 from gcp_router import route_prompt_to_gcp
-
 from checksum_cache import checksum_cache
 
 logger = logging.getLogger("rag-lakehouse-engine")
+
+
+def compute_bm25_scores(query: str, documents: List[str], k1: float = 1.5, b: float = 0.75) -> List[float]:
+    """
+    Computes Okapi BM25 relevance scores for exact keyword & token matches.
+    Provides deterministic lexical matching to complement probabilistic vector search.
+    """
+    if not documents or not query.strip():
+        return [0.0] * len(documents)
+
+    def tokenize(text: str) -> List[str]:
+        return re.findall(r'\w+', text.lower())
+
+    query_tokens = tokenize(query)
+    doc_tokens = [tokenize(d) for d in documents]
+    N = len(documents)
+    avgdl = sum(len(d) for d in doc_tokens) / max(N, 1)
+
+    df = {}
+    for q_token in set(query_tokens):
+        df[q_token] = sum(1 for d in doc_tokens if q_token in d)
+
+    scores = []
+    for d_tokens in doc_tokens:
+        score = 0.0
+        doc_len = len(d_tokens)
+        term_counts = {}
+        for token in d_tokens:
+            term_counts[token] = term_counts.get(token, 0) + 1
+
+        for q_token in query_tokens:
+            if q_token in term_counts:
+                tf = term_counts[q_token]
+                n_q = df.get(q_token, 0)
+                idf = math.log((N - n_q + 0.5) / (n_q + 0.5) + 1.0)
+                numerator = tf * (k1 + 1)
+                denominator = tf + k1 * (1 - b + b * (doc_len / max(avgdl, 1)))
+                score += idf * (numerator / max(denominator, 1e-6))
+        scores.append(score)
+    return scores
+
+
+def reciprocal_rank_fusion(vector_docs: List[Dict[str, Any]], lexical_docs: List[Dict[str, Any]], rrf_k: int = 60) -> List[Dict[str, Any]]:
+    """
+    Combines Vector Search (semantic) and BM25 Lexical Search (exact keyword) using Reciprocal Rank Fusion.
+    RRF_Score = 1/(k + Rank_vector) + 1/(k + Rank_lexical)
+    """
+    rrf_scores = {}
+    doc_map = {}
+
+    for rank, doc in enumerate(vector_docs):
+        h = hashlib.sha256(doc["text"].strip().encode("utf-8")).hexdigest()
+        doc_map[h] = doc
+        rrf_scores[h] = rrf_scores.get(h, 0.0) + (1.0 / (rrf_k + rank + 1))
+
+    for rank, doc in enumerate(lexical_docs):
+        h = hashlib.sha256(doc["text"].strip().encode("utf-8")).hexdigest()
+        if h not in doc_map:
+            doc_map[h] = doc
+        rrf_scores[h] = rrf_scores.get(h, 0.0) + (1.0 / (rrf_k + rank + 1))
+
+    sorted_hashes = sorted(rrf_scores.keys(), key=lambda h: rrf_scores[h], reverse=True)
+    fused_docs = []
+    for h in sorted_hashes:
+        doc = doc_map[h].copy()
+        doc["rrf_score"] = rrf_scores[h]
+        doc["search_type"] = "HYBRID_BM25_VECTOR"
+        fused_docs.append(doc)
+    return fused_docs
 
 
 class RAGEngine:
@@ -41,8 +102,7 @@ class RAGEngine:
         try:
             res = self.collection.get()
             docs = res.get("documents") or []
-            ids = res.get("ids") or []
-            for doc_id, doc_text in zip(ids, docs):
+            for doc_text in docs:
                 if doc_text:
                     self.checksum_cache.add(doc_text)
             logger.info("Distributed Checksum Cache synchronized with ChromaDB collection.")
@@ -59,20 +119,24 @@ class RAGEngine:
 
     def retrieve(self, query: str, top_k: int = 3, category_filter: str = None) -> List[Dict[str, Any]]:
         """
-        Executes vector similarity search using PyTorch embeddings and metadata filters.
-        Deduplicates retrieved result chunks by content hash before returning top_k unique matches.
+        Executes Hybrid Search: PyTorch Dense Vector Search + BM25 Lexical Keyword Search.
+        Fuses ranked candidate lists via Reciprocal Rank Fusion (RRF) and deduplicates outputs.
         """
-        logger.info(f"Generating query vector embedding for: '{query}'...")
+        logger.info(f"Executing Hybrid Retrieval (Vector + BM25) for query: '{query}'...")
         query_embeddings = compute_embeddings([query])
 
-        retrieved_docs = []
+        vector_retrieved = []
+        all_corpus_docs = []
+        all_corpus_metas = []
+
         if self.collection is not None:
             try:
                 where_clause = {"category": category_filter} if category_filter else None
-                # Query extra candidates (top_k * 2) to account for deduplication
+
+                # 1. Vector Search Candidate Retrieval
                 results = self.collection.query(
                     query_embeddings=query_embeddings,
-                    n_results=min(top_k * 2, max(self.collection.count(), 1)),
+                    n_results=min(top_k * 3, max(self.collection.count(), 1)),
                     where=where_clause
                 )
                 if results and results.get("documents") and len(results["documents"]) > 0:
@@ -80,28 +144,49 @@ class RAGEngine:
                     metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
                     distances = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
 
-                    seen_hashes = set()
                     for doc_text, meta, dist in zip(docs, metas, distances):
                         if doc_text:
-                            content_hash = hashlib.sha256(doc_text.strip().encode("utf-8")).hexdigest()[:16]
-                            if content_hash not in seen_hashes:
-                                seen_hashes.add(content_hash)
-                                retrieved_docs.append({
-                                    "text": doc_text,
-                                    "metadata": meta,
-                                    "distance": dist,
-                                })
-                            if len(retrieved_docs) >= top_k:
-                                break
-            except Exception as e:
-                logger.warning(f"Vector query notice: {str(e)}")
+                            vector_retrieved.append({
+                                "text": doc_text,
+                                "metadata": meta,
+                                "distance": dist,
+                            })
 
-        logger.info(f"Retrieved {len(retrieved_docs)} unique context chunks from Vector DB.")
-        return retrieved_docs[:top_k]
+                # 2. Fetch corpus documents for BM25 Lexical Ranking
+                all_res = self.collection.get()
+                all_corpus_docs = all_res.get("documents") or []
+                all_corpus_metas = all_res.get("metadatas") or [{}] * len(all_corpus_docs)
+            except Exception as e:
+                logger.warning(f"Retrieval notice: {str(e)}")
+
+        # 3. Compute BM25 Lexical Scores across collection corpus
+        bm25_scores = compute_bm25_scores(query, all_corpus_docs)
+        lexical_tuples = sorted(
+            zip(bm25_scores, all_corpus_docs, all_corpus_metas),
+            key=lambda x: x[0],
+            reverse=True
+        )
+
+        lexical_retrieved = []
+        for score, doc_text, meta in lexical_tuples:
+            if score > 0.0 and doc_text:
+                lexical_retrieved.append({
+                    "text": doc_text,
+                    "metadata": meta,
+                    "bm25_score": score
+                })
+            if len(lexical_retrieved) >= top_k * 3:
+                break
+
+        # 4. Fuse Vector & BM25 Results via Reciprocal Rank Fusion (RRF)
+        fused_results = reciprocal_rank_fusion(vector_retrieved, lexical_retrieved)
+
+        logger.info(f"Hybrid Search fused {len(vector_retrieved)} vector candidates & {len(lexical_retrieved)} BM25 candidates into {len(fused_results)} top-ranked results.")
+        return fused_results[:top_k]
 
     def query_rag(self, query: str, top_k: int = 3, category_filter: str = None) -> Dict[str, Any]:
         """
-        End-to-end RAG pipeline: Vector Retrieval -> Context Formatting -> GCP Gemini Router.
+        End-to-end RAG pipeline: Hybrid Retrieval -> Context Formatting -> GCP Gemini Router.
         """
         docs = self.retrieve(query=query, top_k=top_k, category_filter=category_filter)
 
@@ -122,5 +207,5 @@ class RAGEngine:
 
 if __name__ == "__main__":
     rag = RAGEngine()
-    response = rag.query_rag("How does PromptShield protect PII?")
-    print("RAG Query Result:", response)
+    response = rag.query_rag("IEEE Senior Member")
+    print("Hybrid RAG Query Result:", response)

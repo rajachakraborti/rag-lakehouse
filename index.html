@@ -78,64 +78,79 @@
     .step-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
     .step-desc { font-size: 12px; color: var(--text-muted); }
 
-    .toast { display: none; margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; font-family: var(--mono); }
-    .toast-success { display: block; background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
-  </style>
-</head>
-<body onload="initPage()">
+      .spinner {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: #ffffff;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .toast { display: none; margin-top: 12px; padding: 10px 14px; border-radius: 6px; font-size: 13px; font-family: var(--mono); }
+      .toast-success { display: block; background: rgba(16, 185, 129, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+    </style>
+  </head>
+  <body onload="initPage()">
 
-  <div class="container">
-    <header>
-      <span class="badge">Architecture & UI Explorer</span>
-      <h1>RAG-Lakehouse Dashboard</h1>
-      <p class="subtitle">Distributed PySpark text processing, PyTorch 384-dim vector embeddings, ChromaDB similarity retrieval, and GCP Gemini model routing.</p>
-    </header>
+    <div class="container">
+      <header>
+        <span class="badge">Architecture & UI Explorer</span>
+        <h1>RAG-Lakehouse Dashboard</h1>
+        <p class="subtitle">Distributed PySpark text processing, PyTorch 384-dim vector embeddings, ChromaDB similarity retrieval, and GCP Gemini model routing.</p>
+      </header>
 
-    <!-- Cloud Backend Connection Bar -->
-    <div class="config-bar">
-      <div class="config-row">
-        <div class="config-inputs">
-          <label style="margin-bottom:0; min-width:140px;">GCP Cloud Run URL:</label>
-          <input type="text" id="gcp-url-input" value="https://rag-lakehouse-1089897614691.us-central1.run.app" onchange="updateConnectionMode()" />
+      <!-- Cloud Backend Connection Bar -->
+      <div class="config-bar">
+        <div class="config-row">
+          <div class="config-inputs">
+            <label style="margin-bottom:0; min-width:140px;">GCP Cloud Run URL:</label>
+            <input type="text" id="gcp-url-input" value="https://rag-lakehouse-1089897614691.us-central1.run.app" onchange="updateConnectionMode()" />
+          </div>
+          <div id="connection-mode-badge" class="mode-indicator mode-live">
+            MODE: LIVE GCP CLOUD RUN API
+          </div>
         </div>
-        <div id="connection-mode-badge" class="mode-indicator mode-live">
-          MODE: LIVE GCP CLOUD RUN API
+        <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
+          <div class="config-inputs">
+            <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
+            <input type="text" id="api-key-input" placeholder="Enter API Key (e.g. demo-key-2026)" value="demo-key-2026" />
+          </div>
+          <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
         </div>
       </div>
-      <div class="config-row" style="border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 10px;">
-        <div class="config-inputs">
-          <label style="margin-bottom:0; min-width:140px;">API Key (Auth):</label>
-          <input type="text" id="api-key-input" placeholder="Enter API Key (e.g. demo-key-2026)" value="demo-key-2026" />
-        </div>
-        <span class="budget-badge">🛡️ RATE LIMITER & BUDGET SAFEGUARD ACTIVE</span>
-      </div>
-    </div>
 
-    <div class="grid-layout">
-      <!-- RAG Search & Router Sandbox -->
-      <div class="panel">
-        <div class="panel-title">
-          <span>🔍 RAG Query & Model Router</span>
-          <span id="router-tag" class="tag tag-complex">ROUTER: READY</span>
-        </div>
-        
-        <label for="query-input">Ask a question across the data lakehouse:</label>
-        <input type="text" id="query-input" value="How does RoaringBitmap seat map compression work?" />
-        
-        <button class="btn" onclick="runRAGQuery()">Execute RAG Query</button>
+      <div class="grid-layout">
+        <!-- RAG Search & Router Sandbox -->
+        <div class="panel">
+          <div class="panel-title">
+            <span>🔍 RAG Query & Model Router</span>
+            <span id="router-tag" class="tag tag-complex">ROUTER: READY</span>
+          </div>
+          
+          <label for="query-input">Ask a question across the data lakehouse:</label>
+          <input type="text" id="query-input" value="How does RoaringBitmap seat map compression work?" />
+          
+          <button id="btn-query" class="btn" onclick="runRAGQuery()">
+            <span id="query-btn-text">Execute RAG Query</span>
+          </button>
 
-        <div id="query-result" class="status-box" style="margin-top: 20px;">
-          <div class="status-row"><span>Query Complexity:</span> <strong id="res-complexity" style="color: var(--accent-purple);">COMPLEX</strong></div>
-          <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
-          <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
-          <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
-          <div class="status-row"><span>Authenticated Identity:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User</strong></div>
-        </div>
+          <div id="query-result" class="status-box" style="margin-top: 20px;">
+            <div class="status-row"><span>Query Complexity:</span> <strong id="res-complexity" style="color: var(--accent-purple);">COMPLEX</strong></div>
+            <div class="status-row"><span>Selected LLM Model:</span> <strong id="res-model" style="color: var(--accent-blue);">gemini-1.5-pro</strong></div>
+            <div class="status-row"><span>Vector Search Latency:</span> <span id="res-latency" style="color: var(--accent-green);">11.34 ms</span></div>
+            <div class="status-row"><span>Execution Mode:</span> <span id="res-mode" style="color: var(--accent-green);">GCP_CLOUD_RUN_LIVE</span></div>
+            <div class="status-row"><span>Authenticated Identity:</span> <strong id="res-user" style="color: var(--accent-cyan);">Demo User</strong></div>
+          </div>
 
-        <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
-        <div id="chunks-container"></div>
-        <div id="answer-container"></div>
-      </div>
+          <label style="margin-top: 20px;">Retrieved Knowledge Chunks (Vector Search Results):</label>
+          <div id="chunks-container"></div>
+          <div id="answer-container"></div>
+        </div>
 
       <!-- PySpark & PyTorch Ingestion Sandbox -->
       <div class="panel">
@@ -299,6 +314,8 @@
       const gcpUrl = document.getElementById("gcp-url-input").value.trim();
       const userKey = document.getElementById("api-key-input").value.trim();
       const tag = document.getElementById("router-tag");
+      const btnQuery = document.getElementById("btn-query");
+      const btnText = document.getElementById("query-btn-text");
       const isComplex = q.length > 30 || q.toLowerCase().includes("scale") || q.toLowerCase().includes("design") || q.toLowerCase().includes("roaringbitmap");
       
       const chunksContainer = document.getElementById("chunks-container");
@@ -306,134 +323,116 @@
       chunksContainer.innerHTML = "";
       answerContainer.innerHTML = "";
 
-      // Strict Authentication Guard Check
-      if (!userKey || !VALID_KEYS.includes(userKey)) {
-        tag.className = "tag tag-complex";
-        tag.innerText = "ROUTER: BLOCKED";
-        
-        document.getElementById("res-complexity").innerText = "UNAUTHORIZED";
-        document.getElementById("res-complexity").style.color = "var(--accent-red)";
-        document.getElementById("res-model").innerText = "None (Blocked)";
-        document.getElementById("res-latency").innerText = "0.00 ms";
-        document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
-        document.getElementById("res-mode").style.color = "var(--accent-red)";
-        document.getElementById("res-user").innerText = "Unauthenticated";
-        document.getElementById("res-user").style.color = "var(--accent-red)";
+      if (!q) return;
 
-        answerContainer.innerHTML = `
-          <div class="error-card">
-            🔒 <strong>HTTP 401 Unauthorized:</strong> Access Denied.<br/>
-            Please enter a valid API Key in the top connection bar (e.g. <code>demo-key-2026</code>).
-          </div>
-        `;
-        return;
-      }
+      // Enable Button Spinner State
+      btnQuery.disabled = true;
+      btnText.innerHTML = '<span class="spinner"></span> Executing RAG Query...';
 
-      tag.className = isComplex ? "tag tag-complex" : "tag tag-standard";
-      tag.innerText = isComplex ? "ROUTER: GEMINI 1.5 PRO" : "ROUTER: GEMINI 1.5 FLASH";
-      
-      document.getElementById("res-complexity").innerText = isComplex ? "COMPLEX" : "STANDARD";
-      document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
-      document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
-      document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
-      document.getElementById("res-user").innerText = userKey === "admin-key-789" ? "Admin User" : "Demo User";
-      document.getElementById("res-user").style.color = "var(--accent-cyan)";
-
-      let retrieved = [];
-
-      if (gcpUrl) {
-        document.getElementById("res-mode").innerText = "GCP_CLOUD_RUN_LIVE";
-        document.getElementById("res-mode").style.color = "var(--accent-green)";
-        try {
-          const resp = await fetch(gcpUrl + "/query", {
-            method: "POST",
-            headers: { 
-              "Content-Type": "application/json",
-              "X-API-Key": userKey
-            },
-            body: JSON.stringify({ prompt: q, top_k: 2 })
-          });
+      try {
+        // Strict Authentication Guard Check
+        if (!userKey || !VALID_KEYS.includes(userKey)) {
+          tag.className = "tag tag-complex";
+          tag.innerText = "ROUTER: BLOCKED";
           
-          if (resp.status === 401) {
-            document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
-            document.getElementById("res-mode").style.color = "var(--accent-red)";
-            answerContainer.innerHTML = `
-              <div class="error-card">
-                🔒 <strong>HTTP 401 Unauthorized:</strong> GCP Cloud Run API rejected the provided key.
-              </div>
-            `;
-            return;
-          }
+          document.getElementById("res-complexity").innerText = "UNAUTHORIZED";
+          document.getElementById("res-complexity").style.color = "var(--accent-red)";
+          document.getElementById("res-model").innerText = "None (Blocked)";
+          document.getElementById("res-latency").innerText = "0.00 ms";
+          document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
+          document.getElementById("res-mode").style.color = "var(--accent-red)";
+          document.getElementById("res-user").innerText = "Unauthenticated";
+          document.getElementById("res-user").style.color = "var(--accent-red)";
 
-          const data = await resp.json();
-          if (data && data.retrieved_chunks) {
-            retrieved = data.retrieved_chunks;
-          }
-          if (data && data.llm_response) {
-            answerContainer.innerHTML = `
-              <div class="answer-card">
-                <strong style="color:var(--accent-green);">🤖 GCP Gemini Synthesized Answer:</strong><br/>
-                ${data.llm_response}
-              </div>
-            `;
-          }
-        } catch (e) {
-          console.warn("GCP Endpoint notice:", e);
-        }
-      } else {
-        document.getElementById("res-mode").innerText = "MOCK_GCP_SANDBOX";
-        document.getElementById("res-mode").style.color = "var(--accent-amber)";
-      }
-
-      // Dynamic Context Synthesis Engine
-      if (retrieved && retrieved.length > 0) {
-        retrieved.forEach(chunk => {
-          const card = document.createElement("div");
-          card.className = "chunk-card";
-          const scorePercent = chunk.distance ? ((1 - chunk.distance) * 100).toFixed(1) : "94.2";
-          card.innerHTML = `
-            <strong>[Doc: ${chunk.metadata ? (chunk.metadata.source || "lakehouse") : "user_upload"}]</strong> (Similarity: ${scorePercent}%)<br/>
-            ${chunk.text}
+          answerContainer.innerHTML = `
+            <div class="error-card">
+              🔒 <strong>HTTP 401 Unauthorized:</strong> Access Denied.<br/>
+              Please enter a valid API Key in the top connection bar (e.g. <code>demo-key-2026</code>).
+            </div>
           `;
-          chunksContainer.appendChild(card);
-        });
-      } else {
-        const qTokens = q.toLowerCase().split(/\s+/).filter(t => t.length > 2);
-        const scoredDocs = KNOWLEDGE_BASE_DOCS.map(doc => {
-          let matches = 0;
-          qTokens.forEach(token => {
-            if (doc.keywords.some(k => k.includes(token) || token.includes(k))) matches += 3;
-            if (doc.text.toLowerCase().includes(token)) matches += 1;
-          });
-          return { doc, matches, similarity: Math.min(99.2, 70 + matches * 10) };
-        }).filter(item => item.matches > 0);
+          return;
+        }
 
-        if (scoredDocs.length > 0) {
-          scoredDocs.sort((a, b) => b.similarity - a.similarity);
-          const topDocs = scoredDocs.slice(0, 2);
+        tag.className = isComplex ? "tag tag-complex" : "tag tag-standard";
+        tag.innerText = isComplex ? "ROUTER: GEMINI 1.5 PRO" : "ROUTER: GEMINI 1.5 FLASH";
+        
+        document.getElementById("res-complexity").innerText = isComplex ? "COMPLEX" : "STANDARD";
+        document.getElementById("res-complexity").style.color = isComplex ? "var(--accent-purple)" : "var(--accent-green)";
+        document.getElementById("res-model").innerText = isComplex ? "gemini-1.5-pro" : "gemini-1.5-flash";
+        document.getElementById("res-latency").innerText = (Math.random() * 8 + 8).toFixed(2) + " ms";
+        document.getElementById("res-user").innerText = userKey === "admin-key-789" ? "Admin User" : "Demo User";
+        document.getElementById("res-user").style.color = "var(--accent-cyan)";
 
-          topDocs.forEach(item => {
+        let retrieved = [];
+        let liveModeExecuted = false;
+
+        if (gcpUrl) {
+          liveModeExecuted = true;
+          document.getElementById("res-mode").innerText = "GCP_CLOUD_RUN_LIVE";
+          document.getElementById("res-mode").style.color = "var(--accent-green)";
+          try {
+            const resp = await fetch(gcpUrl + "/query", {
+              method: "POST",
+              headers: { 
+                "Content-Type": "application/json",
+                "X-API-Key": userKey
+              },
+              body: JSON.stringify({ prompt: q, top_k: 2 })
+            });
+            
+            if (resp.status === 401) {
+              document.getElementById("res-mode").innerText = "401_UNAUTHORIZED";
+              document.getElementById("res-mode").style.color = "var(--accent-red)";
+              answerContainer.innerHTML = `
+                <div class="error-card">
+                  🔒 <strong>HTTP 401 Unauthorized:</strong> GCP Cloud Run API rejected the provided key.
+                </div>
+              `;
+              return;
+            }
+
+            const data = await resp.json();
+            if (data && data.retrieved_chunks) {
+              retrieved = data.retrieved_chunks;
+            }
+            if (data && data.llm_response) {
+              answerContainer.innerHTML = `
+                <div class="answer-card">
+                  <strong style="color:var(--accent-green);">🤖 GCP Gemini Synthesized Answer:</strong><br/>
+                  ${data.llm_response}
+                </div>
+              `;
+            }
+          } catch (e) {
+            console.warn("GCP Endpoint notice:", e);
+          }
+        } else {
+          document.getElementById("res-mode").innerText = "MOCK_GCP_SANDBOX";
+          document.getElementById("res-mode").style.color = "var(--accent-amber)";
+        }
+
+        // Dynamic Context Synthesis Engine
+        if (retrieved && retrieved.length > 0) {
+          retrieved.forEach(chunk => {
             const card = document.createElement("div");
             card.className = "chunk-card";
+            const rrfScore = chunk.rrf_score ? ` (RRF Rank Score: ${chunk.rrf_score.toFixed(4)})` : "";
+            const distScore = chunk.distance ? ` (Similarity: ${((1 - chunk.distance) * 100).toFixed(1)}%)` : "";
+            const scoreLabel = rrfScore || distScore || " (Hybrid Match)";
             card.innerHTML = `
-              <strong>[Doc: ${item.doc.source}]</strong> (Similarity: ${item.similarity.toFixed(1)}%)<br/>
-              ${item.doc.text}
+              <strong>[Doc: ${chunk.metadata ? (chunk.metadata.source || "lakehouse") : "user_upload"}]</strong>${scoreLabel}<br/>
+              ${chunk.text}
             `;
             chunksContainer.appendChild(card);
           });
-        } else {
+        } else if (liveModeExecuted) {
+          // Honest Zero-Result Handling for Live Cloud Run API
           chunksContainer.innerHTML = `
             <div class="chunk-card" style="border-left: 3px solid var(--accent-amber); background: rgba(245, 158, 11, 0.05);">
-              <strong style="color:var(--accent-amber);">ℹ️ Vector Store Lookup (0 Relevant Chunks Found):</strong><br/>
+              <strong style="color:var(--accent-amber);">ℹ️ Hybrid Vector Store Lookup (0 Matches Found):</strong><br/>
               No matching knowledge base documents were found in ChromaDB vector index for <em>"${q}"</em>.
             </div>
           `;
-          const selectedModel = isComplex ? "Gemini 1.5 Pro" : "Gemini 1.5 Flash";
-          answerContainer.innerHTML = `
-            <div class="answer-card" style="border-left: 3px solid var(--accent-amber);">
-              <strong style="color:var(--accent-amber);">🤖 GCP ${selectedModel} Synthesis Notice:</strong><br/>
-              No specific knowledge base context was found for <strong>"${q}"</strong>.<br/><br/>
-              <em>Active lakehouse topics include: RoaringBitmap seat maps, PromptShield PII redaction, GCP Cloud Run scaling, and Raja Chakraborty's profile. You can ingest custom documents on autonomous vehicles using the PySpark Ingestion box below!</em>
             </div>
           `;
         }
