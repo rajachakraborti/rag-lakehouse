@@ -161,38 +161,33 @@ def ingest_document_endpoint(
             detail=f"Text length ({len(req.text)} chars) exceeds maximum limit of {MAX_PROMPT_CHAR_LENGTH} chars."
         )
 
-    # Content-Based Deterministic SHA-256 Idempotency Key
+    # High-Level In-Memory Checksum Registry Check (O(1) Quick Reject)
     raw_content = (req.idempotency_key or req.text).strip()
     chunk_hash = hashlib.sha256(raw_content.encode('utf-8')).hexdigest()[:16]
     chunk_id = f"doc_{chunk_hash}"
     
-    meta = req.metadata or {"source": "custom_user_ingestion.md", "category": "user_upload"}
-    meta["idempotency_hash"] = chunk_hash
-
-    # Check ChromaDB for duplicate content (Idempotency Check)
-    existing = None
-    if rag_engine.collection is not None:
-        try:
-            existing = rag_engine.collection.get(ids=[chunk_id])
-        except Exception:
-            existing = None
-
-    if existing and existing.get("ids") and len(existing["ids"]) > 0:
+    if rag_engine.is_duplicate_payload(req.text, req.idempotency_key):
         return {
             "status": "already_indexed",
-            "idempotency": "DUPLICATE_SKIPPED",
+            "idempotency": "DUPLICATE_SKIPPED_FAST_CACHE",
             "ingested_id": chunk_id,
             "total_documents": rag_engine.collection.count() if rag_engine.collection else 1,
-            "message": f"Idempotency Guarantee: Document content payload already exists in ChromaDB. Skipped duplicate re-indexing.",
+            "message": "High-Level Checksum Registry: Payload SHA-256 already exists. Instant O(1) quick-reject applied.",
             "authenticated_user": STATIC_API_KEYS.get(user_key, "User")
         }
 
+    meta = req.metadata or {"source": "custom_user_ingestion.md", "category": "user_upload"}
+    meta["idempotency_hash"] = chunk_hash
+
     if rag_engine.collection is not None:
-        rag_engine.collection.add(
+        rag_engine.collection.upsert(
             documents=[req.text],
             metadatas=[meta],
             ids=[chunk_id]
         )
+
+    # Register in high-level checksum cache
+    rag_engine.register_checksum(req.text, req.idempotency_key)
 
     return {
         "status": "success",
