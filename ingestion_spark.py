@@ -44,7 +44,8 @@ def compute_embeddings(texts: List[str]) -> List[List[float]]:
     for text in texts:
         vec = np.zeros(384)
         for token in text.lower().split():
-            idx = abs(hash(token)) % 384
+            token_hash = int(hashlib.md5(token.encode('utf-8')).hexdigest(), 16)
+            idx = token_hash % 384
             vec[idx] += 1.0
         norm = np.linalg.norm(vec)
         if norm > 0:
