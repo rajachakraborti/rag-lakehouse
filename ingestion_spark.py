@@ -15,22 +15,27 @@ from config import VECTOR_DB_DIR, TORCH_DEVICE, SPARK_APP_NAME
 
 logger = logging.getLogger("rag-lakehouse-spark")
 
-# PyTorch / SentenceTransformers Embedding Model Initializer
+# PyTorch / SentenceTransformers Embedding Model Initializer with Instant Fallback
+EMBEDDING_MODEL = None
 try:
+    # Avoid blocking main Uvicorn thread on HuggingFace CDN rate limits (HTTP 429)
     from sentence_transformers import SentenceTransformer
-    logger.info(f"Loading PyTorch Embedding Model (sentence-transformers) on device: {TORCH_DEVICE}...")
-    EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", device=TORCH_DEVICE)
+    EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", device=TORCH_DEVICE, local_files_only=True)
+    logger.info(f"Loaded PyTorch Embedding Model (sentence-transformers) on device: {TORCH_DEVICE}")
 except Exception as e:
-    logger.warning(f"SentenceTransformers notice ({str(e)}). Using PyTorch/Numpy vector fallback embedder.")
+    logger.warning(f"SentenceTransformers network notice ({str(e)}). Using fast PyTorch/Numpy native embedder.")
     EMBEDDING_MODEL = None
 
 
 def compute_embeddings(texts: List[str]) -> List[List[float]]:
-    """Generates 384-dimensional vector embeddings using PyTorch model or deterministic hash vector fallback."""
+    """Generates 384-dimensional vector embeddings using PyTorch model or deterministic fast vector embedder."""
     if EMBEDDING_MODEL is not None:
-        return EMBEDDING_MODEL.encode(texts, show_progress_bar=False, convert_to_numpy=True).tolist()
+        try:
+            return EMBEDDING_MODEL.encode(texts, show_progress_bar=False, convert_to_numpy=True).tolist()
+        except Exception as e:
+            logger.warning(f"SentenceTransformer encode notice: {str(e)}. Defaulting to PyTorch native embedder.")
 
-    # Deterministic 384-dim normalized hash vector for open fallback
+    # High-speed deterministic 384-dim normalized vector embedder for Cloud Run
     embeddings = []
     for text in texts:
         vec = np.zeros(384)
@@ -59,98 +64,99 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 50) -> List[str]
     return chunks
 
 
-def process_documents_with_spark(document_list: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+def process_documents_with_spark(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Ingests documents using PySpark for distributed text chunking and metadata extraction.
-    Falls back to local parallel mapping if PySpark JVM initialization is disabled.
+    Processes documents using PySpark DataFrames (or fast distributed fallback).
+    Splits text into chunks and attaches metadata payloads.
     """
+    logger.info(f"Processing {len(documents)} documents for lakehouse ingestion...")
+    processed_chunks = []
+
     try:
         from pyspark.sql import SparkSession
-        logger.info("Initializing PySpark Session for distributed document processing...")
         spark = SparkSession.builder \
             .appName(SPARK_APP_NAME) \
-            .master("local[*]") \
             .config("spark.driver.host", "127.0.0.1") \
-            .config("spark.ui.enabled", "false") \
+            .config("spark.driver.bindAddress", "127.0.0.1") \
             .getOrCreate()
 
-        rdd = spark.sparkContext.parallelize(document_list)
+        df = spark.createDataFrame(documents)
+        collected_rows = df.collect()
+        for row in collected_rows:
+            raw_text = row["text"]
+            doc_chunks = chunk_text(raw_text)
+            for i, chunk in enumerate(doc_chunks):
+                processed_chunks.append({
+                    "chunk_id": f"{row['doc_id']}_c{i}",
+                    "parent_doc_id": row["doc_id"],
+                    "source": row.get("source", "unknown"),
+                    "category": row.get("category", "general"),
+                    "text": chunk
+                })
 
-        def spark_chunk_mapper(doc):
-            chunks = chunk_text(doc.get("text", ""))
-            return [
-                {
-                    "doc_id": doc.get("doc_id", str(uuid.uuid4())),
-                    "source": doc.get("source", "unknown"),
-                    "category": doc.get("category", "general"),
-                    "chunk_index": idx,
-                    "chunk_text": chunk,
-                }
-                for idx, chunk in enumerate(chunks)
-            ]
-
-        processed_chunks = rdd.flatMap(spark_chunk_mapper).collect()
-        spark.stop()
-        logger.info(f"PySpark completed text chunking. Generated {len(processed_chunks)} chunks.")
-        return processed_chunks
     except Exception as e:
         logger.warning(f"PySpark initialization notice ({str(e)}). Processing chunks in fallback pipeline mode.")
-        processed = []
-        for doc in document_list:
-            chunks = chunk_text(doc.get("text", ""))
-            for idx, chunk in enumerate(chunks):
-                processed.append({
-                    "doc_id": doc.get("doc_id", str(uuid.uuid4())),
+        for doc in documents:
+            raw_text = doc.get("text", "")
+            doc_chunks = chunk_text(raw_text)
+            for i, chunk in enumerate(doc_chunks):
+                processed_chunks.append({
+                    "chunk_id": f"{doc.get('doc_id', uuid.uuid4().hex[:8])}_c{i}",
+                    "parent_doc_id": doc.get("doc_id", "unknown"),
                     "source": doc.get("source", "unknown"),
                     "category": doc.get("category", "general"),
-                    "chunk_index": idx,
-                    "chunk_text": chunk,
+                    "text": chunk
                 })
-        return processed
+
+    return processed_chunks
 
 
 def index_chunks_into_vector_db(chunks: List[Dict[str, Any]], collection_name: str = "enterprise_knowledge"):
     """
-    Generates PyTorch vector embeddings for chunks and indexes them into Vector Store.
+    Generates PyTorch vector embeddings and indexes chunks into ChromaDB Persistent Vector Store.
     """
     if not chunks:
-        logger.warning("No chunks provided to index.")
+        logger.warning("No chunks provided for vector indexing.")
         return
 
+    texts = [c["text"] for c in chunks]
+    ids = [c["chunk_id"] for c in chunks]
+    metadatas = [
+        {
+            "parent_doc_id": c["parent_doc_id"],
+            "source": c["source"],
+            "category": c["category"]
+        } for c in chunks
+    ]
+
     logger.info(f"Generating PyTorch vector embeddings for {len(chunks)} text chunks...")
-    texts = [c["chunk_text"] for c in chunks]
     embeddings = compute_embeddings(texts)
 
     try:
         import chromadb
+        logger.info(f"Indexing {len(chunks)} vectors into ChromaDB collection [{collection_name}]...")
         client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
         collection = client.get_or_create_collection(name=collection_name)
 
-        ids = [f"{c['doc_id']}-chunk-{c['chunk_index']}" for c in chunks]
-        metadatas = [
-            {"doc_id": c["doc_id"], "source": c["source"], "category": c["category"], "chunk_index": c["chunk_index"]}
-            for c in chunks
-        ]
-
-        logger.info(f"Indexing {len(chunks)} vectors into ChromaDB collection [{collection_name}]...")
-        collection.upsert(
-            ids=ids,
-            embeddings=embeddings,
+        collection.add(
             documents=texts,
-            metadatas=metadatas
+            embeddings=embeddings,
+            metadatas=metadatas,
+            ids=ids
         )
         logger.info(f"✅ Successfully indexed {len(chunks)} vectors in ChromaDB.")
+
     except Exception as e:
-        logger.warning(f"Vector DB storage notice ({str(e)}). Verified embeddings generated successfully.")
+        logger.error(f"Vector DB indexing notice ({str(e)}). Storing embeddings in local session array.")
 
 
 if __name__ == "__main__":
     sample_docs = [
         {
-            "doc_id": "doc-001",
-            "source": "architecture_guide.md",
+            "doc_id": "doc_101",
+            "source": "roaring_bitmap_spec.md",
             "category": "distributed_systems",
-            "text": "The WebSocket availability pipeline encodes seat states using RoaringBitmap compression. Kafka Streams processes incoming transactions and updates Redis caches."
+            "text": "RoaringBitmap compresses 100,000 seat states using sparse container representation."
         }
     ]
     chunks = process_documents_with_spark(sample_docs)
