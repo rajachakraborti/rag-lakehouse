@@ -392,46 +392,51 @@
           card.className = "chunk-card";
           const scorePercent = chunk.distance ? ((1 - chunk.distance) * 100).toFixed(1) : "94.2";
           card.innerHTML = `
-            <strong>[Doc: ${chunk.metadata ? chunk.metadata.source : "user_upload"}]</strong> (Similarity: ${scorePercent}%)<br/>
+            <strong>[Doc: ${chunk.metadata ? (chunk.metadata.source || "lakehouse") : "user_upload"}]</strong> (Similarity: ${scorePercent}%)<br/>
             ${chunk.text}
           `;
           chunksContainer.appendChild(card);
         });
       } else {
-        const qTokens = q.toLowerCase().split(/\s+/);
+        const qTokens = q.toLowerCase().split(/\s+/).filter(t => t.length > 2);
         const scoredDocs = KNOWLEDGE_BASE_DOCS.map(doc => {
           let matches = 0;
           qTokens.forEach(token => {
-            if (doc.keywords.some(k => k.includes(token) || token.includes(k))) matches += 2;
+            if (doc.keywords.some(k => k.includes(token) || token.includes(k))) matches += 3;
             if (doc.text.toLowerCase().includes(token)) matches += 1;
           });
-          const score = 85 + (matches * 3) + Math.floor(Math.random() * 5);
-          return { doc, similarity: Math.min(99.2, score) };
-        });
+          return { doc, matches, similarity: Math.min(99.2, 70 + matches * 10) };
+        }).filter(item => item.matches > 0);
 
-        scoredDocs.sort((a, b) => b.similarity - a.similarity);
-        const topDocs = scoredDocs.slice(0, 2);
+        if (scoredDocs.length > 0) {
+          scoredDocs.sort((a, b) => b.similarity - a.similarity);
+          const topDocs = scoredDocs.slice(0, 2);
 
-        topDocs.forEach(item => {
-          const card = document.createElement("div");
-          card.className = "chunk-card";
-          card.innerHTML = `
-            <strong>[Doc: ${item.doc.source}]</strong> (Similarity: ${item.similarity.toFixed(1)}%)<br/>
-            ${item.doc.text}
+          topDocs.forEach(item => {
+            const card = document.createElement("div");
+            card.className = "chunk-card";
+            card.innerHTML = `
+              <strong>[Doc: ${item.doc.source}]</strong> (Similarity: ${item.similarity.toFixed(1)}%)<br/>
+              ${item.doc.text}
+            `;
+            chunksContainer.appendChild(card);
+          });
+        } else {
+          chunksContainer.innerHTML = `
+            <div class="chunk-card" style="border-left: 3px solid var(--accent-amber); background: rgba(245, 158, 11, 0.05);">
+              <strong style="color:var(--accent-amber);">ℹ️ Vector Store Lookup (0 Relevant Chunks Found):</strong><br/>
+              No matching knowledge base documents were found in ChromaDB vector index for <em>"${q}"</em>.
+            </div>
           `;
-          chunksContainer.appendChild(card);
-        });
-
-        const selectedModel = isComplex ? "Gemini 1.5 Pro" : "Gemini 1.5 Flash";
-        const topDocText = topDocs[0].doc.text;
-        answerContainer.innerHTML = `
-          <div class="answer-card">
-            <strong style="color:var(--accent-green);">🤖 GCP ${selectedModel} Synthesized Answer:</strong><br/>
-            Based on retrieved lakehouse document <code>${topDocs[0].doc.source}</code>:<br/><br/>
-            <em>"${topDocText}"</em><br/><br/>
-            <strong>Synthesized Answer:</strong> The query <strong>'${q}'</strong> was evaluated against ChromaDB vector embeddings and routed to <strong>${selectedModel}</strong>.
-          </div>
-        `;
+          const selectedModel = isComplex ? "Gemini 1.5 Pro" : "Gemini 1.5 Flash";
+          answerContainer.innerHTML = `
+            <div class="answer-card" style="border-left: 3px solid var(--accent-amber);">
+              <strong style="color:var(--accent-amber);">🤖 GCP ${selectedModel} Synthesis Notice:</strong><br/>
+              No specific knowledge base context was found for <strong>"${q}"</strong>.<br/><br/>
+              <em>Active lakehouse topics include: RoaringBitmap seat maps, PromptShield PII redaction, GCP Cloud Run scaling, and Raja Chakraborty's profile. You can ingest custom documents on autonomous vehicles using the PySpark Ingestion box below!</em>
+            </div>
+          `;
+        }
       }
     }
 

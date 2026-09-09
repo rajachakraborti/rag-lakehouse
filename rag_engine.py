@@ -4,6 +4,7 @@ Author: Raja Chakraborty
 
 Combines PyTorch vector similarity search, ChromaDB metadata filtering,
 and GCP Vertex AI / Gemini LLM context synthesis into a high-accuracy RAG pipeline.
+Does not generate hallucinated fallback strings when queries match no vector context.
 """
 
 import logging
@@ -30,6 +31,7 @@ class RAGEngine:
     def retrieve(self, query: str, top_k: int = 3, category_filter: str = None) -> List[Dict[str, Any]]:
         """
         Executes vector similarity search using PyTorch embeddings and metadata filters.
+        Returns top_k ranked context chunks from ChromaDB.
         """
         logger.info(f"Generating query vector embedding for: '{query}'...")
         query_embeddings = compute_embeddings([query])
@@ -49,21 +51,14 @@ class RAGEngine:
                     distances = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
 
                     for doc_text, meta, dist in zip(docs, metas, distances):
-                        retrieved_docs.append({
-                            "text": doc_text,
-                            "metadata": meta,
-                            "distance": dist,
-                        })
+                        if doc_text:
+                            retrieved_docs.append({
+                                "text": doc_text,
+                                "metadata": meta,
+                                "distance": dist,
+                            })
             except Exception as e:
                 logger.warning(f"Vector query notice: {str(e)}")
-
-        # Fallback snippet if collection is empty in test mode
-        if not retrieved_docs:
-            retrieved_docs.append({
-                "text": f"Knowledge base entry regarding '{query}' — RoaringBitmap and GCP Vertex AI Router architecture.",
-                "metadata": {"source": "knowledge_lakehouse", "category": category_filter or "general"},
-                "distance": 0.05
-            })
 
         logger.info(f"Retrieved {len(retrieved_docs)} relevant context chunks from Vector DB.")
         return retrieved_docs
@@ -74,7 +69,7 @@ class RAGEngine:
         """
         docs = self.retrieve(query=query, top_k=top_k, category_filter=category_filter)
 
-        context_str = "\n---\n".join([f"[{d['metadata'].get('source', 'doc')}]: {d['text']}" for d in docs])
+        context_str = "\n---\n".join([f"[{d['metadata'].get('source', 'doc')}]: {d['text']}" for d in docs]) if docs else ""
 
         # Synthesize answer via GCP Router
         synthesis = route_prompt_to_gcp(prompt=query, context=context_str)
