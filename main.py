@@ -161,10 +161,10 @@ def ingest_document_endpoint(
             detail=f"Text length ({len(req.text)} chars) exceeds maximum limit of {MAX_PROMPT_CHAR_LENGTH} chars."
         )
 
-    # High-Level In-Memory Checksum Registry Check (O(1) Quick Reject)
+    # Cryptographic Full 256-Bit SHA-256 Checksum (Collision-Proof)
     raw_content = (req.idempotency_key or req.text).strip()
-    chunk_hash = hashlib.sha256(raw_content.encode('utf-8')).hexdigest()[:16]
-    chunk_id = f"doc_{chunk_hash}"
+    chunk_hash = hashlib.sha256(raw_content.encode('utf-8')).hexdigest()
+    chunk_id = f"doc_{chunk_hash[:16]}"
     
     if rag_engine.is_duplicate_payload(req.text, req.idempotency_key):
         return {

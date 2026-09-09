@@ -89,7 +89,7 @@ class ChecksumCacheEngine:
         Checks: In-Memory -> SQLite -> GCP Firestore -> Redis REST API.
         """
         raw_key = (custom_key or text).strip()
-        chunk_hash = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:16]
+        chunk_hash = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
 
         # Layer 1: In-Memory Set ($O(1)$ sub-millisecond check)
         if chunk_hash in self.local_memory_set:
@@ -127,7 +127,7 @@ class ChecksumCacheEngine:
         Registers new document payload hash across in-memory set, SQLite, and GCP Firestore / Redis.
         """
         raw_key = (custom_key or text).strip()
-        chunk_hash = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()[:16]
+        chunk_hash = hashlib.sha256(raw_key.encode('utf-8')).hexdigest()
 
         # 1. Update In-Memory Set
         self.local_memory_set.add(chunk_hash)
