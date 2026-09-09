@@ -145,13 +145,32 @@ def index_chunks_into_vector_db(chunks: List[Dict[str, Any]], collection_name: s
         client = chromadb.PersistentClient(path=VECTOR_DB_DIR)
         collection = client.get_or_create_collection(name=collection_name)
 
-        collection.add(
-            documents=texts,
-            embeddings=embeddings,
-            metadatas=metadatas,
-            ids=ids
+        # Check existing IDs for idempotency deduplication
+        existing_ids = set()
+        try:
+            get_res = collection.get(ids=ids)
+            if get_res and get_res.get("ids"):
+                existing_ids = set(get_res["ids"])
+        except Exception:
+            pass
+
+        new_indices = [i for i, cid in enumerate(ids) if cid not in existing_ids]
+        if not new_indices:
+            logger.info(f"Idempotency Guard: All {len(chunks)} chunks already exist in ChromaDB. Skipped duplicate re-indexing.")
+            return
+
+        filtered_texts = [texts[i] for i in new_indices]
+        filtered_embeddings = [embeddings[i] for i in new_indices]
+        filtered_metadatas = [metadatas[i] for i in new_indices]
+        filtered_ids = [ids[i] for i in new_indices]
+
+        collection.upsert(
+            documents=filtered_texts,
+            embeddings=filtered_embeddings,
+            metadatas=filtered_metadatas,
+            ids=filtered_ids
         )
-        logger.info(f"✅ Successfully indexed {len(chunks)} vectors in ChromaDB.")
+        logger.info(f"✅ Successfully indexed {len(filtered_ids)} new vectors in ChromaDB (Skipped {len(chunks) - len(filtered_ids)} duplicates).")
 
     except Exception as e:
         logger.error(f"Vector DB indexing notice ({str(e)}). Storing embeddings in local session array.")
