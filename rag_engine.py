@@ -14,6 +14,8 @@ from config import VECTOR_DB_DIR
 from ingestion_spark import compute_embeddings
 from gcp_router import route_prompt_to_gcp
 
+from checksum_cache import checksum_cache
+
 logger = logging.getLogger("rag-lakehouse-engine")
 
 
@@ -22,7 +24,7 @@ class RAGEngine:
         self.collection_name = collection_name
         self.chroma_client = None
         self.collection = None
-        self.checksum_registry = set()
+        self.checksum_cache = checksum_cache
 
         try:
             import chromadb
@@ -33,7 +35,7 @@ class RAGEngine:
             logger.warning(f"Vector DB Client notice ({str(e)}). Running in dynamic search mode.")
 
     def sync_checksum_registry(self):
-        """Pre-seeds high-level in-memory checksum registry from Vector DB for O(1) quick rejection."""
+        """Pre-seeds distributed checksum cache from Vector DB collection on cold start."""
         if self.collection is None:
             return
         try:
@@ -41,27 +43,19 @@ class RAGEngine:
             docs = res.get("documents") or []
             ids = res.get("ids") or []
             for doc_id, doc_text in zip(ids, docs):
-                if doc_id.startswith("doc_"):
-                    self.checksum_registry.add(doc_id.replace("doc_", ""))
                 if doc_text:
-                    h = hashlib.sha256(doc_text.strip().encode("utf-8")).hexdigest()[:16]
-                    self.checksum_registry.add(h)
-            logger.info(f"High-Level Checksum Registry initialized with {len(self.checksum_registry)} document hashes.")
+                    self.checksum_cache.add(doc_text)
+            logger.info("Distributed Checksum Cache synchronized with ChromaDB collection.")
         except Exception as e:
-            logger.warning(f"Checksum registry sync notice ({str(e)}).")
+            logger.warning(f"Checksum cache sync notice ({str(e)}).")
 
     def is_duplicate_payload(self, text: str, custom_key: str = None) -> bool:
-        """Sub-millisecond O(1) high-level check to quickly reject duplicate ingestion payloads."""
-        key = (custom_key or text).strip()
-        h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-        return h in self.checksum_registry
+        """Fast multi-layer check using Distributed Checksum Cache."""
+        return self.checksum_cache.is_duplicate(text, custom_key)
 
     def register_checksum(self, text: str, custom_key: str = None) -> str:
-        """Registers a newly indexed payload hash in the high-level in-memory registry."""
-        key = (custom_key or text).strip()
-        h = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
-        self.checksum_registry.add(h)
-        return h
+        """Registers newly indexed payload in Distributed Checksum Cache."""
+        return self.checksum_cache.add(text, custom_key)
 
     def retrieve(self, query: str, top_k: int = 3, category_filter: str = None) -> List[Dict[str, Any]]:
         """
