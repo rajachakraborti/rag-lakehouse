@@ -1,13 +1,18 @@
 """
-PySpark & PyTorch Document Ingestion Engine
+PySpark & PyTorch Dynamic Document Ingestion Engine
 Author: Raja Chakraborty
 
 Scalable document ingestion pipeline using PySpark DataFrames for parallel text chunking
 and PyTorch-backed embeddings for high-dimensional Vector DB indexing.
+Supports dynamic text input via CLI arguments, JSON datasets, and SHA-256 content idempotency.
 """
 
 import os
+import sys
 import uuid
+import json
+import argparse
+import hashlib
 import logging
 import numpy as np
 from typing import List, Dict, Any
@@ -18,7 +23,6 @@ logger = logging.getLogger("rag-lakehouse-spark")
 # PyTorch / SentenceTransformers Embedding Model Initializer with Instant Fallback
 EMBEDDING_MODEL = None
 try:
-    # Avoid blocking main Uvicorn thread on HuggingFace CDN rate limits (HTTP 429)
     from sentence_transformers import SentenceTransformer
     EMBEDDING_MODEL = SentenceTransformer("all-MiniLM-L6-v2", device=TORCH_DEVICE, local_files_only=True)
     logger.info(f"Loaded PyTorch Embedding Model (sentence-transformers) on device: {TORCH_DEVICE}")
@@ -67,7 +71,7 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 50) -> List[str]
 def process_documents_with_spark(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Processes documents using PySpark DataFrames (or fast distributed fallback).
-    Splits text into chunks and attaches metadata payloads.
+    Splits text into chunks, attaches metadata, and generates SHA-256 idempotency hashes.
     """
     logger.info(f"Processing {len(documents)} documents for lakehouse ingestion...")
     processed_chunks = []
@@ -86,11 +90,12 @@ def process_documents_with_spark(documents: List[Dict[str, Any]]) -> List[Dict[s
             raw_text = row["text"]
             doc_chunks = chunk_text(raw_text)
             for i, chunk in enumerate(doc_chunks):
+                chunk_hash = hashlib.sha256(chunk.encode('utf-8')).hexdigest()[:16]
                 processed_chunks.append({
-                    "chunk_id": f"{row['doc_id']}_c{i}",
-                    "parent_doc_id": row["doc_id"],
-                    "source": row.get("source", "unknown"),
-                    "category": row.get("category", "general"),
+                    "chunk_id": f"doc_{chunk_hash}",
+                    "parent_doc_id": row.get("doc_id", f"doc_{chunk_hash}"),
+                    "source": row.get("source", "custom_ingestion.md"),
+                    "category": row.get("category", "user_upload"),
                     "text": chunk
                 })
 
@@ -100,11 +105,12 @@ def process_documents_with_spark(documents: List[Dict[str, Any]]) -> List[Dict[s
             raw_text = doc.get("text", "")
             doc_chunks = chunk_text(raw_text)
             for i, chunk in enumerate(doc_chunks):
+                chunk_hash = hashlib.sha256(chunk.encode('utf-8')).hexdigest()[:16]
                 processed_chunks.append({
-                    "chunk_id": f"{doc.get('doc_id', uuid.uuid4().hex[:8])}_c{i}",
-                    "parent_doc_id": doc.get("doc_id", "unknown"),
-                    "source": doc.get("source", "unknown"),
-                    "category": doc.get("category", "general"),
+                    "chunk_id": f"doc_{chunk_hash}",
+                    "parent_doc_id": doc.get("doc_id", f"doc_{chunk_hash}"),
+                    "source": doc.get("source", "custom_ingestion.md"),
+                    "category": doc.get("category", "user_upload"),
                     "text": chunk
                 })
 
@@ -114,6 +120,7 @@ def process_documents_with_spark(documents: List[Dict[str, Any]]) -> List[Dict[s
 def index_chunks_into_vector_db(chunks: List[Dict[str, Any]], collection_name: str = "enterprise_knowledge"):
     """
     Generates PyTorch vector embeddings and indexes chunks into ChromaDB Persistent Vector Store.
+    Includes SHA-256 Content-Based Idempotency Checks.
     """
     if not chunks:
         logger.warning("No chunks provided for vector indexing.")
@@ -150,14 +157,38 @@ def index_chunks_into_vector_db(chunks: List[Dict[str, Any]], collection_name: s
         logger.error(f"Vector DB indexing notice ({str(e)}). Storing embeddings in local session array.")
 
 
+def main():
+    parser = argparse.ArgumentParser(description="PySpark & PyTorch Dynamic Document Ingestion CLI")
+    parser.add_argument("--text", type=str, help="Raw document text to ingest into lakehouse ChromaDB")
+    parser.add_argument("--source", type=str, default="cli_user_input.md", help="Source filename or document title")
+    parser.add_argument("--category", type=str, default="user_upload", help="Metadata category filter")
+    parser.add_argument("--dataset", type=str, help="Path to custom JSON dataset file")
+
+    args = parser.parse_args()
+
+    docs_to_process = []
+    if args.text:
+        docs_to_process.append({
+            "doc_id": f"cli_{hashlib.sha256(args.text.encode()).hexdigest()[:8]}",
+            "source": args.source,
+            "category": args.category,
+            "text": args.text
+        })
+    elif args.dataset and os.path.exists(args.dataset):
+        with open(args.dataset, "r") as f:
+            docs_to_process = json.load(f)
+    else:
+        sample_path = os.path.join(os.path.dirname(__file__), "data", "raw", "sample_dataset.json")
+        if os.path.exists(sample_path):
+            with open(sample_path, "r") as f:
+                docs_to_process = json.load(f)
+
+    if docs_to_process:
+        chunks = process_documents_with_spark(docs_to_process)
+        index_chunks_into_vector_db(chunks)
+    else:
+        print("No documents specified for ingestion.")
+
+
 if __name__ == "__main__":
-    sample_docs = [
-        {
-            "doc_id": "doc_101",
-            "source": "roaring_bitmap_spec.md",
-            "category": "distributed_systems",
-            "text": "RoaringBitmap compresses 100,000 seat states using sparse container representation."
-        }
-    ]
-    chunks = process_documents_with_spark(sample_docs)
-    index_chunks_into_vector_db(chunks)
+    main()
